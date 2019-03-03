@@ -1,3 +1,5 @@
+[![Go Report Card](https://goreportcard.com/badge/github.com/openSUSE-zh/node2rpm)](https://goreportcard.com/report/github.com/openSUSE-zh/node2rpm)
+
 node2rpm
 
 ------

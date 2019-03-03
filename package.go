@@ -92,7 +92,7 @@ func (t Tree) Inspect(idx int) string {
 
 // Node of a dependency tree
 type Node struct {
-	License interface{} // SPDX License string or License Object
+	License string
 	Tarball string
 	Parent  Parents
 	Child   Tree
@@ -234,6 +234,7 @@ func RegistryQuery(uri string) Package {
 	return pkg
 }
 
+// formatUri standardlize registry uri in place
 func formatUri(uri *string) {
 	registry := "https://registry.npmjs.org/"
 	if strings.HasPrefix(*uri, "http") {
@@ -266,6 +267,12 @@ func getHttpBody(uri string) []byte {
 	return body
 }
 
+// getLicense parse license for package
+// three kinds of license expression nowadays:
+// 1. String {"license": "MIT"}
+// 2. Array {"licenses": [{"type": "MIT", "url": "blabla"}, {"type": "Apache-2.0", "url":"daladala"}]}
+// 3. Map {"license": {"type": "MIT", "url": "blabla"}}
+// Both 2 and 3 are now deprecated but still in use.
 func getLicense(js *simplejson.Json) string {
 	j := js.Get("license")
 
@@ -295,6 +302,8 @@ func getLicense(js *simplejson.Json) string {
 	return ""
 }
 
+// getReverseSortedMapKeys reverse sort the available versions because newer
+// version tends to be used frequently. save a lot of match work
 func getReverseSortedMapKeys(versions map[string]interface{}) []string {
 	keys := []string{}
 	for k := range versions {
