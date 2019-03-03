@@ -2,6 +2,7 @@ package main
 
 import (
 	simplejson "github.com/bitly/go-simplejson"
+	"reflect"
 	"testing"
 )
 
@@ -20,5 +21,25 @@ func Test_getLicense(t *testing.T) {
 		} else {
 			t.Errorf("getLicense(): %s test failed.", k)
 		}
+	}
+}
+
+func Test_dedupeParents(t *testing.T) {
+	var r Parents
+	r = append(r, Parent{"root", []string{}})
+	r = append(r, Parent{"rimraf@1.0.0", []string{}})
+	r = append(r, Parent{"wrappy@1.0.0", []string{}})
+	o := make(Parents, len(r))
+	n := make(Parents, len(r))
+	copy(o, r)
+	copy(n, r)
+	o = append(o, Parent{"A", []string{}})
+	n = append(n, Parent{"B", []string{}})
+	n = append(n, Parent{"C", []string{}})
+	testResult := dedupeParents(o, n)
+	if reflect.DeepEqual(testResult, r) {
+		t.Log("Test passed")
+	} else {
+		t.Errorf("dedupeParents() failed with result %v, should be %v", testResult, r)
 	}
 }

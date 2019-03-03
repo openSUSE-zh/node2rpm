@@ -55,6 +55,27 @@ func (p Parents) Inspect() string {
 	return s
 }
 
+// dedupeParents find intersection of two Parents
+func dedupeParents(o, n Parents) Parents {
+	var low, high Parents
+	if len(o)-len(n) >= 0 {
+		low = n
+		high = o
+	} else {
+		low = o
+		high = n
+	}
+	idx := 0
+	// "-2" because the last element is always different
+	for i := len(low) - 2; i >= 0; i-- {
+		if low[i].Name == high[i].Name {
+			idx = i
+			break
+		}
+	}
+	return low[:idx+1]
+}
+
 // ParentTree a place holding all items in the tree now with its parents
 // used to compute unfied parents for the unified package, or one package
 // with a specified version may occur everywhere in the tree. (Dedupe)
@@ -83,6 +104,23 @@ func (t Tree) Append(k string, v *Node, parents Parents) {
 		}
 	}
 	tv.SetMapIndex(reflect.ValueOf(k), reflect.ValueOf(v))
+}
+
+func (t Tree) Delete(k string, pt Parents) {
+	tv := reflect.ValueOf(t)
+	for i := 0; i < len(pt)-1; i++ {
+		name := reflect.ValueOf(pt[i].Name)
+		if tv.Kind() == reflect.Map {
+			tv = tv.MapIndex(name)
+		}
+		if tv.Kind() == reflect.Ptr {
+			tv = tv.Elem()
+		}
+		if tv.Kind() == reflect.Struct {
+			tv = tv.FieldByName("Child")
+		}
+	}
+	fmt.Println(tv)
 }
 
 func (t Tree) Inspect(idx int) string {
@@ -134,19 +172,22 @@ func BuildDependencyTree(uri, ver string, tree Tree, pt ParentTree, parents Pare
 	} else {
 		// if parents already has this dependency, don't append
 		if parents.Contains(pkg.Name + "@" + ver) {
-			log.Printf("%s, version %s, has been provides via one of its parent, skiped.", pkg.Name, ver)
+			log.Printf("%s, version %s, has been provided via one of its parent, skiped.", pkg.Name, ver)
 			fmt.Printf(parents.Inspect())
 		} else {
-			// ParentTree implemetation here
-			if ptParents, ok := pt.Contains(pkg.Name + "@" + ver); ok {
+			if ptParents, ok := pt[pkg.Name+"@"+ver]; ok {
+				log.Printf("%s, version %s, has been in the dependency tree but is not the new one's direct parent nor direct parent's counterpart, npm can not find it. try move the old and the new to a place both can be found by their dependents.", pkg.Name, ver)
+				log.Println("Deleting existing old one from tree")
+				tree.Delete(pkg.Name+"@"+ver, ptParents)
+				log.Println("Computing a unified parent")
 				parents = dedupeParents(ptParents, parents)
-				pt.Drop(pkg.Name + "@" + ver)
-				tree.Drop(pkg.Name + "@" + ver)
+				delete(pt, pkg.Name+"@"+ver)
 			}
-			pt[pkg.Name+"@"+ver] = parents
 			tree.Append(pkg.Name+"@"+ver, &node, parents)
 		}
 	}
+
+	pt[pkg.Name+"@"+ver] = parents
 
 	// calculate Child
 	dependencies := getDependencies(pkg.Json.Get(ver).Get("dependencies"), ex)
@@ -161,7 +202,7 @@ func BuildDependencyTree(uri, ver string, tree Tree, pt ParentTree, parents Pare
 		newParents := append(parents, Parent{k, left})
 		// next Parent end
 		a := strings.Split(k, "@")
-		BuildDependencyTree(a[0], a[1], tree, newParents, ex)
+		BuildDependencyTree(a[0], a[1], tree, pt, newParents, ex)
 	}
 	// Child end
 }
@@ -231,7 +272,9 @@ func RegistryQuery(uri string) Package {
 	body := getHttpBody(uri)
 
 	js, e := simplejson.NewJson(body)
-	errChk(e)
+	if e != nil {
+		log.Fatalf("Cannot parse to json %s", body)
+	}
 
 	pkg := Package{}
 	pkg.Name = js.Get("_id").MustString()
