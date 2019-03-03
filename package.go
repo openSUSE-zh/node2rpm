@@ -60,9 +60,8 @@ type Tree map[string]*Node
 
 func (t Tree) Append(k string, v *Node, parents Parents) {
 	tv := reflect.ValueOf(t)
-	// i starts from 1 because first level of dependency is flattened to root tree
 	// skip the last one because it's the one to be inserted.
-	for i := 1; i < len(parents)-1; i++ {
+	for i := 0; i < len(parents)-1; i++ {
 		name := reflect.ValueOf(parents[i].Name)
 		if tv.Kind() == reflect.Map {
 			tv = tv.MapIndex(name)
@@ -81,14 +80,21 @@ func (t Tree) Append(k string, v *Node, parents Parents) {
 	tv.SetMapIndex(reflect.ValueOf(k), reflect.ValueOf(v))
 }
 
-func (t Tree) Inspect() string {
-	
+func (t Tree) Inspect(idx int) string {
+	s := ""
+	for k, v := range t {
+		s += strings.Repeat("\t", idx) + "|\n"
+		s += strings.Repeat("\t", idx) + k + "\n"
+		s += v.Child.Inspect(idx + 1)
+	}
+	return s
 }
 
 // Node of a dependency tree
 type Node struct {
 	License interface{} // SPDX License string or License Object
 	Tarball string
+	Parent  Parents
 	Child   Tree
 }
 
@@ -96,12 +102,12 @@ type Node struct {
 type Package struct {
 	Name     string
 	Versions []string
-	License  *simplejson.Json // SPDX License string or license Object
+	License  string
 	Json     *simplejson.Json
 }
 
 // BuildDependencyTree build a dependency tree
-func BuildDependencyTree(uri, ver string, tree Tree, parents Parents) {
+func BuildDependencyTree(uri, ver string, tree Tree, parents Parents, ex Exclusion) {
 	node := Node{}
 	pkg := RegistryQuery(uri)
 
@@ -115,11 +121,13 @@ func BuildDependencyTree(uri, ver string, tree Tree, parents Parents) {
 	}
 	// end
 
+	// see explanations below
+	node.Parent = parents[:len(parents)-1]
 	node.License = pkg.License
 	node.Tarball = pkg.Json.Get(ver).Get("dist").Get("tarball").MustString()
 
-	// root and the first level dependency
-	if len(parents) < 3 {
+	if len(parents) < 1 {
+		// root
 		tree[pkg.Name+"@"+ver] = &node
 	} else {
 		// if parents already has this dependency, don't append
@@ -132,44 +140,35 @@ func BuildDependencyTree(uri, ver string, tree Tree, parents Parents) {
 	}
 
 	// calculate Child
-	dependencies, _ := pkg.Json.Get(ver).Get("dependencies").Map()
+	dependencies := getDependencies(pkg.Json.Get(ver).Get("dependencies"), ex)
 
-	// calculate next parent
-	sameDeepth := []string{}
-
-	for k, constriant := range dependencies {
-		childPkg := RegistryQuery(k)
-		c, _ := constriant.(string)
-		version := calculateSemver(childPkg.Versions, c)
-		if len(version) == 0 {
-			log.Fatalf("%s: no suitable version found for %s in %v.", k, constriant, childPkg.Versions)
-		}
-		sameDeepth = append(sameDeepth, k+"@"+version)
-	}
-
-	for i, k := range sameDeepth {
+	for i, k := range dependencies {
 		left := []string{}
-		for j, v := range sameDeepth {
+		for j, v := range dependencies {
 			if i != j {
 				left = append(left, v)
 			}
 		}
-		parent := Parent{k, left}
-		newParents := parents
-		newParents = append(newParents, parent)
+		newParents := append(parents, Parent{k, left})
+		// next Parent end
 		a := strings.Split(k, "@")
-		BuildDependencyTree(a[0], a[1], tree, newParents)
+		BuildDependencyTree(a[0], a[1], tree, newParents, ex)
 	}
-
+	// Child end
 }
 
-func calculateSemver(versions []string, constriant string) string {
+func getSemver(versions []string, constriant string) string {
 	c, e := semver.NewConstraint(constriant)
-	errChk(e)
+	if e != nil {
+		log.Fatalf("Could not initialize a new semver constriant froom %s", constriant)
+	}
 
 	for _, v := range versions {
 		sv, e := semver.NewVersion(v)
-		errChk(e)
+		if e != nil {
+			log.Fatalf("Could not initialize a new semver version from %s", v)
+		}
+
 		// always return the latest matched semver
 		if c.Check(sv) {
 			return v
@@ -179,29 +178,48 @@ func calculateSemver(versions []string, constriant string) string {
 	return ""
 }
 
+func getDependencies(js *simplejson.Json, ex Exclusion) []string {
+	upstreamDependencies, _ := js.Map()
+	// calculate next parent, we need to append current dependencies as parents
+	// for packages in the next loop here in this loop. because in the next loop,
+	// we have no way to find the counterparts of the package's direct parent. eg:
+	// Loop 1: A and B, B's dependencies is C, D.
+	// Loop 2: C, C's dependency is A
+	// C loop is triggered by B loop. B loop only knows B's dependencies C and D.
+	// B doesn't know it's counterpart A. because such dependencies are only known
+	// to B's parent. so C doesn't know A is in its up-level too.
+	// So we append all dependencies of B's parent (including B itself) as the last
+	// parent of B, eg:
+	// Loop 1: A and B, B's dependencies is C, D. B's parent is [whatever, [A, B]]
+	// Loop 2: C. C's dependency is A. C's parent is [whatever, [A, B], [C, D]].
+	// Now C knows A. With a clever design (see Parent type), C also knows its direct
+	// parent is B.
+	// With this design. when calculating parents, we need to skip the last parent, eg:
+	// Loop B, parent [whatever, [A, B]].
+	// We need to skip [A, B], or our resolver will think B has already been in the tree.
+	dependencies := []string{}
+
+	for k, constriant := range upstreamDependencies {
+		childPkg := RegistryQuery(k)
+		c, _ := constriant.(string)
+		version := getSemver(childPkg.Versions, c)
+		if len(version) == 0 {
+			log.Fatalf("%s: no suitable version found for %s in %v.", k, constriant, childPkg.Versions)
+		}
+		if ex.Contains(k, version) {
+			log.Printf("%s version %s matched one of the packages known to be excluded, skipped.", k, version)
+		} else {
+			dependencies = append(dependencies, k+"@"+version)
+		}
+	}
+
+	return dependencies
+}
+
 // RegistryQuery query registry to get informations of a Package
 func RegistryQuery(uri string) Package {
-	registry := "https://registry.npmjs.org/"
-	pkgName := uri
-	if strings.HasPrefix(uri, "http") {
-		pkgName = filepath.Base(uri)
-	}
-	uri = registry + pkgName
-
-	resp, e := http.Get(uri)
-	errChk(e)
-	defer resp.Body.Close()
-
-	body := []byte{}
-
-	if resp.StatusCode == http.StatusOK {
-		body, e = ioutil.ReadAll(resp.Body)
-		errChk(e)
-	}
-
-	if len(body) == 0 {
-		log.Fatalf("Empty response body. Check whether your specified package exists: %s", uri)
-	}
+	formatUri(&uri)
+	body := getHttpBody(uri)
 
 	js, e := simplejson.NewJson(body)
 	errChk(e)
@@ -211,11 +229,70 @@ func RegistryQuery(uri string) Package {
 	pkg.Json = js.Get("versions")
 	versions, _ := pkg.Json.Map()
 	pkg.Versions = getReverseSortedMapKeys(versions)
-
-	//FIXME: license
-	pkg.License = js.Get("license")
+	pkg.License = getLicense(js)
 
 	return pkg
+}
+
+func formatUri(uri *string) {
+	registry := "https://registry.npmjs.org/"
+	if strings.HasPrefix(*uri, "http") {
+		*uri = filepath.Base(*uri)
+	}
+	*uri = registry + *uri
+}
+
+func getHttpBody(uri string) []byte {
+	resp, e := http.Get(uri)
+	if e != nil {
+		log.Fatalf("Can't get http response from %s", uri)
+	}
+	defer resp.Body.Close()
+
+	body := []byte{}
+
+	if resp.StatusCode == http.StatusOK {
+		body, e = ioutil.ReadAll(resp.Body)
+		if e != nil {
+			log.Fatalf("Can't read http body %v", resp.Body)
+		}
+		if len(body) == 0 {
+			log.Fatalf("Empty response body. Check whether your specified package exists: %s", uri)
+		}
+	} else {
+		log.Fatalf("statuscode is not 200 but %d", resp.StatusCode)
+	}
+
+	return body
+}
+
+func getLicense(js *simplejson.Json) string {
+	j := js.Get("license")
+
+	s, e := j.String()
+	if e == nil {
+		return s
+	}
+
+	m, e := j.Map()
+	if e == nil {
+		s, _ = m["type"].(string)
+		return s
+	}
+
+	// the only way to check nil value for simplejson
+	if reflect.ValueOf(j).Elem().Field(0).IsNil() {
+		jv := js.Get("licenses").MustArray()
+		a := []string{}
+		for _, v := range jv {
+			m := reflect.ValueOf(v).MapIndex(reflect.ValueOf("type")).Interface()
+			s, _ = m.(string)
+			a = append(a, s)
+		}
+		return strings.Join(a, " OR ")
+	}
+
+	return ""
 }
 
 func getReverseSortedMapKeys(versions map[string]interface{}) []string {
