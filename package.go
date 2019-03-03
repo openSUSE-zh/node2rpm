@@ -55,7 +55,12 @@ func (p Parents) Inspect() string {
 	return s
 }
 
-// Dependency Tree
+// ParentTree a place holding all items in the tree now with its parents
+// used to compute unfied parents for the unified package, or one package
+// with a specified version may occur everywhere in the tree. (Dedupe)
+type ParentTree map[string]Parents
+
+// Tree Dependency Tree
 type Tree map[string]*Node
 
 func (t Tree) Append(k string, v *Node, parents Parents) {
@@ -94,7 +99,6 @@ func (t Tree) Inspect(idx int) string {
 type Node struct {
 	License string
 	Tarball string
-	Parent  Parents
 	Child   Tree
 }
 
@@ -107,7 +111,7 @@ type Package struct {
 }
 
 // BuildDependencyTree build a dependency tree
-func BuildDependencyTree(uri, ver string, tree Tree, parents Parents, ex Exclusion) {
+func BuildDependencyTree(uri, ver string, tree Tree, pt ParentTree, parents Parents, ex Exclusion) {
 	node := Node{}
 	pkg := RegistryQuery(uri)
 
@@ -121,8 +125,6 @@ func BuildDependencyTree(uri, ver string, tree Tree, parents Parents, ex Exclusi
 	}
 	// end
 
-	// see explanations below
-	node.Parent = parents[:len(parents)-1]
 	node.License = pkg.License
 	node.Tarball = pkg.Json.Get(ver).Get("dist").Get("tarball").MustString()
 
@@ -135,6 +137,13 @@ func BuildDependencyTree(uri, ver string, tree Tree, parents Parents, ex Exclusi
 			log.Printf("%s, version %s, has been provides via one of its parent, skiped.", pkg.Name, ver)
 			fmt.Printf(parents.Inspect())
 		} else {
+			// ParentTree implemetation here
+			if ptParents, ok := pt.Contains(pkg.Name + "@" + ver); ok {
+				parents = dedupeParents(ptParents, parents)
+				pt.Drop(pkg.Name + "@" + ver)
+				tree.Drop(pkg.Name + "@" + ver)
+			}
+			pt[pkg.Name+"@"+ver] = parents
 			tree.Append(pkg.Name+"@"+ver, &node, parents)
 		}
 	}

@@ -37,7 +37,7 @@ func (e Exclusion) Contains(k, v string) bool {
 
 		c, e := semver.NewConstraint(n)
 		if e != nil {
-			log.Fatalf("Could not initalize a new semver constriant froom %s", n)
+			log.Fatalf("Could not initialize a new semver constriant froom %s", n)
 		}
 
 		if c.Check(sv) {
@@ -98,7 +98,8 @@ func main() {
 		}
 
 		tree := Tree{}
-		BuildDependencyTree(pkg, ver, tree, Parents{}, ex)
+		parentTree := ParentTree{}
+		BuildDependencyTree(pkg, ver, tree, parentTree, Parents{}, ex)
 		log.Printf("%s %s tree has been built:\n", pkg, ver)
 		fmt.Println(tree.Inspect(1))
 	}
