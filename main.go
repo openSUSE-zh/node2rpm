@@ -24,15 +24,10 @@ func (e Exclusion) Inspect() string {
 }
 
 // Contains if a package with specified version locates in the Exclusion
-func (e Exclusion) Contains(k, v string) bool {
+func (e Exclusion) Contains(k string, v *semver.Version) bool {
 	for m, n := range e {
 		if k != m {
 			continue
-		}
-
-		sv, e := semver.NewVersion(v)
-		if e != nil {
-			log.Fatalf("Could not initialize a new semver version from %s", v)
 		}
 
 		c, e := semver.NewConstraint(n)
@@ -40,7 +35,7 @@ func (e Exclusion) Contains(k, v string) bool {
 			log.Fatalf("Could not initialize a new semver constriant froom %s", n)
 		}
 
-		if c.Check(sv) {
+		if c.Check(v) {
 			return true
 		}
 	}

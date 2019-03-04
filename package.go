@@ -120,7 +120,7 @@ func (t Tree) Delete(k string, pt Parents) {
 			tv = tv.FieldByName("Child")
 		}
 	}
-	fmt.Println(tv)
+	tv.SetMapIndex(reflect.ValueOf(k), reflect.Value{})
 }
 
 func (t Tree) Inspect(idx int) string {
@@ -143,7 +143,7 @@ type Node struct {
 // Package fetched from registry
 type Package struct {
 	Name     string
-	Versions []string
+	Versions []*semver.Version
 	License  string
 	Json     *simplejson.Json
 }
@@ -152,10 +152,11 @@ type Package struct {
 func BuildDependencyTree(uri, ver string, tree Tree, pt ParentTree, parents Parents, ex Exclusion) {
 	node := Node{}
 	pkg := RegistryQuery(uri)
+	continueDependencies := true
 
 	// assign values to initialize the loop
 	if ver == "latest" {
-		ver = pkg.Versions[0]
+		ver = pkg.Versions[0].String()
 	}
 
 	if len(parents) == 0 {
@@ -174,6 +175,7 @@ func BuildDependencyTree(uri, ver string, tree Tree, pt ParentTree, parents Pare
 		if parents.Contains(pkg.Name + "@" + ver) {
 			log.Printf("%s, version %s, has been provided via one of its parent, skiped.", pkg.Name, ver)
 			fmt.Printf(parents.Inspect())
+			continueDependencies = false
 		} else {
 			if ptParents, ok := pt[pkg.Name+"@"+ver]; ok {
 				log.Printf("%s, version %s, has been in the dependency tree but is not the new one's direct parent nor direct parent's counterpart, npm can not find it. try move the old and the new to a place both can be found by their dependents.", pkg.Name, ver)
@@ -181,6 +183,7 @@ func BuildDependencyTree(uri, ver string, tree Tree, pt ParentTree, parents Pare
 				tree.Delete(pkg.Name+"@"+ver, ptParents)
 				log.Println("Computing a unified parent")
 				parents = dedupeParents(ptParents, parents)
+				parents = append(parents, Parent{})
 				delete(pt, pkg.Name+"@"+ver)
 			}
 			tree.Append(pkg.Name+"@"+ver, &node, parents)
@@ -189,43 +192,40 @@ func BuildDependencyTree(uri, ver string, tree Tree, pt ParentTree, parents Pare
 
 	pt[pkg.Name+"@"+ver] = parents
 
-	// calculate Child
-	dependencies := getDependencies(pkg.Json.Get(ver).Get("dependencies"), ex)
+	if continueDependencies {
+		// calculate Child
+		dependencies := getDependencies(pkg.Json.Get(ver).Get("dependencies"), ex)
 
-	for i, k := range dependencies {
-		left := []string{}
-		for j, v := range dependencies {
-			if i != j {
-				left = append(left, v)
+		for i, k := range dependencies {
+			left := []string{}
+			for j, v := range dependencies {
+				if i != j {
+					left = append(left, v)
+				}
 			}
+			newParents := append(parents, Parent{k, left})
+			// next Parent end
+			a := strings.Split(k, "@")
+			BuildDependencyTree(a[0], a[1], tree, pt, newParents, ex)
 		}
-		newParents := append(parents, Parent{k, left})
-		// next Parent end
-		a := strings.Split(k, "@")
-		BuildDependencyTree(a[0], a[1], tree, pt, newParents, ex)
 	}
 	// Child end
 }
 
-func getSemver(versions []string, constriant string) string {
+func getSemver(versions []*semver.Version, constriant string) *semver.Version {
 	c, e := semver.NewConstraint(constriant)
 	if e != nil {
 		log.Fatalf("Could not initialize a new semver constriant froom %s", constriant)
 	}
 
 	for _, v := range versions {
-		sv, e := semver.NewVersion(v)
-		if e != nil {
-			log.Fatalf("Could not initialize a new semver version from %s", v)
-		}
-
 		// always return the latest matched semver
-		if c.Check(sv) {
+		if c.Check(v) {
 			return v
 		}
 	}
 
-	return ""
+	return &semver.Version{}
 }
 
 func getDependencies(js *simplejson.Json, ex Exclusion) []string {
@@ -253,13 +253,13 @@ func getDependencies(js *simplejson.Json, ex Exclusion) []string {
 		childPkg := RegistryQuery(k)
 		c, _ := constriant.(string)
 		version := getSemver(childPkg.Versions, c)
-		if len(version) == 0 {
+		if len(version.String()) == 0 {
 			log.Fatalf("%s: no suitable version found for %s in %v.", k, constriant, childPkg.Versions)
 		}
 		if ex.Contains(k, version) {
-			log.Printf("%s version %s matched one of the packages known to be excluded, skipped.", k, version)
+			log.Printf("%s version %s matched one of the packages known to be excluded, skipped.", k, version.String())
 		} else {
-			dependencies = append(dependencies, k+"@"+version)
+			dependencies = append(dependencies, k+"@"+version.String())
 		}
 	}
 
@@ -280,7 +280,7 @@ func RegistryQuery(uri string) Package {
 	pkg.Name = js.Get("_id").MustString()
 	pkg.Json = js.Get("versions")
 	versions, _ := pkg.Json.Map()
-	pkg.Versions = getReverseSortedMapKeys(versions)
+	pkg.Versions = getReverseSorted(versions)
 	pkg.License = getLicense(js)
 
 	return pkg
@@ -354,13 +354,17 @@ func getLicense(js *simplejson.Json) string {
 	return ""
 }
 
-// getReverseSortedMapKeys reverse sort the available versions because newer
+// getReverseSorted reverse sort the available versions because newer
 // version tends to be used frequently. save a lot of match work
-func getReverseSortedMapKeys(versions map[string]interface{}) []string {
-	keys := []string{}
-	for k := range versions {
-		keys = append(keys, k)
+func getReverseSorted(versions map[string]interface{}) []*semver.Version {
+	ver := []*semver.Version{}
+	for v := range versions {
+		sv, e := semver.NewVersion(v)
+		if e != nil {
+			log.Fatalf("Can not build semver from %s.", v)
+		}
+		ver = append(ver, sv)
 	}
-	sort.Sort(sort.Reverse(sort.StringSlice(keys)))
-	return keys
+	sort.Sort(sort.Reverse(semver.Collection(ver)))
+	return ver
 }
