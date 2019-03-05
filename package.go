@@ -15,7 +15,7 @@ import (
 
 type Parent struct {
 	Name     string
-	Brothers []string
+	Brothers map[string]struct{}
 }
 
 type Parents []Parent
@@ -25,10 +25,8 @@ func (p Parents) Contains(s string) bool {
 		if p[i].Name == s {
 			return true
 		}
-		for _, v := range p[i].Brothers {
-			if v == s {
-				return true
-			}
+		if _, ok := p[i].Brothers[s]; ok {
+			return true
 		}
 	}
 	return false
@@ -36,7 +34,7 @@ func (p Parents) Contains(s string) bool {
 
 func (p Parents) Inspect() string {
 	s := p[0].Name
-	for _, v := range p[0].Brothers {
+	for v := range p[0].Brothers {
 		s += "\t" + v
 	}
 	s += "\n"
@@ -46,7 +44,7 @@ func (p Parents) Inspect() string {
 	for i := 1; i < len(p)-1; i++ {
 		s += strings.Repeat("\t", idx) + "|\n"
 		s += strings.Repeat("\t", idx) + p[i].Name
-		for _, v := range p[i].Brothers {
+		for v := range p[i].Brothers {
 			s += "\t" + v
 		}
 		s += "\n"
@@ -73,7 +71,7 @@ func dedupeParents(o, n Parents) Parents {
 			break
 		}
 	}
-	return low[:idx+1]
+	return append(low[:idx+1], Parent{})
 }
 
 // ParentTree a place holding all items in the tree now with its parents
@@ -160,7 +158,7 @@ func BuildDependencyTree(uri, ver string, tree Tree, pt ParentTree, parents Pare
 	}
 
 	if len(parents) == 0 {
-		parents = append(parents, Parent{pkg.Name + "@" + ver, []string{}})
+		parents = append(parents, Parent{pkg.Name + "@" + ver, map[string]struct{}{}})
 	}
 	// end
 
@@ -183,7 +181,6 @@ func BuildDependencyTree(uri, ver string, tree Tree, pt ParentTree, parents Pare
 				tree.Delete(pkg.Name+"@"+ver, ptParents)
 				log.Println("Computing a unified parent")
 				parents = dedupeParents(ptParents, parents)
-				parents = append(parents, Parent{})
 				delete(pt, pkg.Name+"@"+ver)
 			}
 			tree.Append(pkg.Name+"@"+ver, &node, parents)
@@ -197,10 +194,10 @@ func BuildDependencyTree(uri, ver string, tree Tree, pt ParentTree, parents Pare
 		dependencies := getDependencies(pkg.Json.Get(ver).Get("dependencies"), ex)
 
 		for i, k := range dependencies {
-			left := []string{}
+			left := map[string]struct{}{}
 			for j, v := range dependencies {
 				if i != j {
-					left = append(left, v)
+					left[v] = struct{}{}
 				}
 			}
 			newParents := append(parents, Parent{k, left})
