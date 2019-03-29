@@ -62,7 +62,7 @@ func parseExcludeString(s string) Exclusion {
 }
 
 func parsePackageWithExplicitVersion(s string) (string, string) {
-	a := strings.Split(s, "@")
+	a := strings.Split(s, ":")
 	if len(a) < 2 {
 		return a[0], ""
 	}
@@ -75,7 +75,7 @@ func main() {
 	flag.StringVar(&pkg, "pkg", "", "the module needs to package.")
 	flag.StringVar(&ver, "ver", "latest", "the module's version.")
 	flag.BoolVar(&bundle, "bundle", true, "don't bundle dependencies.")
-	flag.StringVar(&exclude, "exclude", "", "the module to be excluded, in 'rimraf@1.0.0,mkdirp@1.0.1' format.")
+	flag.StringVar(&exclude, "exclude", "", "the module to be excluded, in 'rimraf:1.0.0,mkdirp:1.0.1' format.")
 	flag.Parse()
 
 	if len(pkg) == 0 {
@@ -94,9 +94,11 @@ func main() {
 
 		tree := Tree{}
 		parentTree := ParentTree{}
-		BuildDependencyTree(pkg, ver, tree, parentTree, Parents{}, ex)
+		licenses := Licenses{}
+		BuildDependencyTree(pkg, ver, tree, parentTree, Parents{}, ex, licenses)
 		log.Printf("%s %s tree has been built:\n", pkg, ver)
 		fmt.Println(tree.Inspect(1))
+		fmt.Println(licenses)
 	}
 
 	//	if bundle {

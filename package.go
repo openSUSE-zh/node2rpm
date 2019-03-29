@@ -53,8 +53,16 @@ func (p Parents) Inspect() string {
 	return s
 }
 
+func (p Parents) DirectParents() []string {
+	a := []string{}
+	for _, v := range p {
+		a = append(a, v.Name)
+	}
+	return a
+}
+
 // dedupeParents find intersection of two Parents
-func dedupeParents(o, n Parents) Parents {
+func dedupeParents(o, n Parents, t Tree) Parents {
 	var low, high Parents
 	if len(o)-len(n) >= 0 {
 		low = n
@@ -71,7 +79,14 @@ func dedupeParents(o, n Parents) Parents {
 			break
 		}
 	}
-	return append(low[:idx+1], Parent{})
+	// the last element' brothers should be the new direct parent's existing dependencies.
+	brothers := map[string]struct{}{}
+	for k := range t.FindChild(idx, low) {
+		brothers[k] = struct{}{}
+	}
+	p := make([]Parent, idx+1, idx+1)
+	copy(p, low)
+	return append(p, Parent{low[len(low)-1].Name, brothers})
 }
 
 // ParentTree a place holding all items in the tree now with its parents
@@ -82,11 +97,40 @@ type ParentTree map[string]Parents
 // Tree Dependency Tree
 type Tree map[string]*Node
 
-func (t Tree) Append(k string, v *Node, parents Parents) {
+// LoopFunc function to process struct in loop
+type LoopFunc interface {
+	Process(reflect.Value) reflect.Value
+}
+
+// AppendFunc the LoopFunc in Append method
+type AppendFunc struct {
+	Key   string
+	Value *Node
+}
+
+// Process need to intialize the map for Append
+func (fn AppendFunc) Process(tv reflect.Value) reflect.Value {
+	if tv.FieldByName("Child").IsNil() {
+		mapType := reflect.MapOf(reflect.TypeOf(fn.Key), reflect.TypeOf(fn.Value))
+		tv.FieldByName("Child").Set(reflect.MakeMapWithSize(mapType, 0))
+	}
+	return tv
+}
+
+// DummyFunc the "do nothing" LoopFunc
+type DummyFunc struct{}
+
+// Process Dummy
+func (fn DummyFunc) Process(tv reflect.Value) reflect.Value {
+	return tv
+}
+
+// Loop loop through the tree to locate the element
+func (t Tree) Loop(p Parents, fn LoopFunc) reflect.Value {
 	tv := reflect.ValueOf(t)
-	// skip the last one because it's the one to be inserted.
-	for i := 0; i < len(parents)-1; i++ {
-		name := reflect.ValueOf(parents[i].Name)
+	// skip the last element since it's the one to be processed
+	for i := 0; i < len(p)-1; i++ {
+		name := reflect.ValueOf(p[i].Name)
 		if tv.Kind() == reflect.Map {
 			tv = tv.MapIndex(name)
 		}
@@ -94,31 +138,50 @@ func (t Tree) Append(k string, v *Node, parents Parents) {
 			tv = tv.Elem()
 		}
 		if tv.Kind() == reflect.Struct {
-			if tv.FieldByName("Child").IsNil() {
-				mapType := reflect.MapOf(reflect.TypeOf(k), reflect.TypeOf(v))
-				tv.FieldByName("Child").Set(reflect.MakeMapWithSize(mapType, 0))
-			}
+			tv = fn.Process(tv)
 			tv = tv.FieldByName("Child")
 		}
 	}
+	return tv
+}
+
+// Append append an element to the tree
+func (t Tree) Append(k string, v *Node, p Parents) {
+	fn := AppendFunc{k, v}
+	tv := t.Loop(p, fn)
 	tv.SetMapIndex(reflect.ValueOf(k), reflect.ValueOf(v))
 }
 
-func (t Tree) Delete(k string, pt Parents) {
-	tv := reflect.ValueOf(t)
-	for i := 0; i < len(pt)-1; i++ {
-		name := reflect.ValueOf(pt[i].Name)
-		if tv.Kind() == reflect.Map {
-			tv = tv.MapIndex(name)
-		}
-		if tv.Kind() == reflect.Ptr {
-			tv = tv.Elem()
-		}
-		if tv.Kind() == reflect.Struct {
-			tv = tv.FieldByName("Child")
+// Delete delete an element from the tree
+func (t Tree) Delete(k string, p Parents) {
+	fn := DummyFunc{}
+	tv := t.Loop(p, fn)
+	tv.SetMapIndex(reflect.ValueOf(k), reflect.Value{})
+}
+
+// FindChild find the child tree of the idx element of the parents
+func (t Tree) FindChild(idx int, p Parents) Tree {
+	tree := t
+	for i := 0; i <= idx; i++ {
+		tree = tree[p[i].Name].Child
+	}
+	return tree
+}
+
+func (t Tree) FindDependencies(k string, p Parents) []reflect.Value {
+	fn := DummyFunc{}
+	tv := t.Loop(p, fn).MapIndex(reflect.ValueOf(k)).Elem().FieldByName("Child")
+	keys := tv.MapKeys()
+	if len(keys) > 0 {
+		for _, v := range keys {
+			nk := v.String()
+			np := make([]Parent, len(p), cap(p))
+			copy(np, p)
+			np = append(np, Parent{nk, map[string]struct{}{}})
+			keys = append(keys, t.FindDependencies(nk, np)...)
 		}
 	}
-	tv.SetMapIndex(reflect.ValueOf(k), reflect.Value{})
+	return keys
 }
 
 func (t Tree) Inspect(idx int) string {
@@ -133,7 +196,6 @@ func (t Tree) Inspect(idx int) string {
 
 // Node of a dependency tree
 type Node struct {
-	License string
 	Tarball string
 	Child   Tree
 }
@@ -146,11 +208,21 @@ type Package struct {
 	Json     *simplejson.Json
 }
 
+// Licenses holds all unique licenses of the tree
+type Licenses map[string]struct{}
+
+// Append appends new license to Licenses
+func (l Licenses) Append(k string) {
+	if _, ok := l[k]; !ok {
+		l[k] = struct{}{}
+	}
+}
+
 // BuildDependencyTree build a dependency tree
-func BuildDependencyTree(uri, ver string, tree Tree, pt ParentTree, parents Parents, ex Exclusion) {
+func BuildDependencyTree(uri, ver string, tree Tree, pt ParentTree, parents Parents, ex Exclusion, le Licenses) {
 	node := Node{}
 	pkg := RegistryQuery(uri)
-	continueDependencies := true
+	ahead := true
 
 	// assign values to initialize the loop
 	if ver == "latest" {
@@ -158,52 +230,70 @@ func BuildDependencyTree(uri, ver string, tree Tree, pt ParentTree, parents Pare
 	}
 
 	if len(parents) == 0 {
-		parents = append(parents, Parent{pkg.Name + "@" + ver, map[string]struct{}{}})
+		parents = append(parents, Parent{pkg.Name + ":" + ver, map[string]struct{}{}})
 	}
 	// end
 
-	node.License = pkg.License
+	le.Append(pkg.License)
 	node.Tarball = pkg.Json.Get(ver).Get("dist").Get("tarball").MustString()
 
 	if len(parents) < 1 {
 		// root
-		tree[pkg.Name+"@"+ver] = &node
+		tree[pkg.Name+":"+ver] = &node
 	} else {
 		// if parents already has this dependency, don't append
-		if parents.Contains(pkg.Name + "@" + ver) {
-			log.Printf("%s, version %s, has been provided via one of its parent, skiped.", pkg.Name, ver)
-			fmt.Printf(parents.Inspect())
-			continueDependencies = false
-		} else {
-			if ptParents, ok := pt[pkg.Name+"@"+ver]; ok {
-				log.Printf("%s, version %s, has been in the dependency tree but is not the new one's direct parent nor direct parent's counterpart, npm can not find it. try move the old and the new to a place both can be found by their dependents.", pkg.Name, ver)
+		//if parents.Contains(pkg.Name + ":" + ver) {
+		//	log.Printf("%s, version %s, has been provided via one of its parent, skiped.", pkg.Name, ver)
+		//	continueDependencies = false
+		//} else {
+		if ptParents, ok := pt[pkg.Name+":"+ver]; ok {
+			log.Printf("%s, version %s, has been in the dependency tree but is not the new one's direct parent nor direct parent's counterpart, npm can not find it. try move the old and the new to a place both can be found by their dependents.", pkg.Name, ver)
+			log.Println("Computing a unified parent")
+			fmt.Println(ptParents.DirectParents())
+			fmt.Println(parents.DirectParents())
+			parents = dedupeParents(ptParents, parents, tree)
+			fmt.Println(parents.DirectParents())
+			if reflect.DeepEqual(parents.DirectParents(), ptParents.DirectParents()) {
+				log.Printf("Computed parent is exactly the same as the old parent, skipped")
+				ahead = false
+			} else {
 				log.Println("Deleting existing old one from tree")
-				tree.Delete(pkg.Name+"@"+ver, ptParents)
-				log.Println("Computing a unified parent")
-				parents = dedupeParents(ptParents, parents)
-				delete(pt, pkg.Name+"@"+ver)
+				// delete all dependencies of the deleted item from ParentTree as well
+				d := tree.FindDependencies(pkg.Name+":"+ver, ptParents)
+				fmt.Println(tree.Inspect(0))
+				tree.Delete(pkg.Name+":"+ver, ptParents)
+				delete(pt, pkg.Name+":"+ver)
+				for _, v := range d {
+					delete(pt, v.String())
+				}
+				tree.Append(pkg.Name+":"+ver, &node, parents)
+				fmt.Println(tree.Inspect(0))
 			}
-			tree.Append(pkg.Name+"@"+ver, &node, parents)
+		} else {
+			tree.Append(pkg.Name+":"+ver, &node, parents)
 		}
+		//}
 	}
 
-	pt[pkg.Name+"@"+ver] = parents
+	pt[pkg.Name+":"+ver] = parents
 
-	if continueDependencies {
-		// calculate Child
+	// calculate Child
+	if ahead {
 		dependencies := getDependencies(pkg.Json.Get(ver).Get("dependencies"), ex)
-
-		for i, k := range dependencies {
-			left := map[string]struct{}{}
-			for j, v := range dependencies {
-				if i != j {
-					left[v] = struct{}{}
+		if len(dependencies) > 0 {
+			for i, k := range dependencies {
+				left := map[string]struct{}{}
+				for j, v := range dependencies {
+					if i != j {
+						left[v] = struct{}{}
+					}
 				}
+				np := make([]Parent, len(parents), cap(parents))
+				copy(np, parents)
+				np = append(np, Parent{k, left})
+				a := strings.Split(k, ":")
+				BuildDependencyTree(a[0], a[1], tree, pt, np, ex, le)
 			}
-			newParents := append(parents, Parent{k, left})
-			// next Parent end
-			a := strings.Split(k, "@")
-			BuildDependencyTree(a[0], a[1], tree, pt, newParents, ex)
 		}
 	}
 	// Child end
@@ -256,7 +346,7 @@ func getDependencies(js *simplejson.Json, ex Exclusion) []string {
 		if ex.Contains(k, version) {
 			log.Printf("%s version %s matched one of the packages known to be excluded, skipped.", k, version.String())
 		} else {
-			dependencies = append(dependencies, k+"@"+version.String())
+			dependencies = append(dependencies, k+":"+version.String())
 		}
 	}
 

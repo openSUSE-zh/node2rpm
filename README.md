@@ -14,7 +14,7 @@ Package as bundle:
 
 Package as bundle but split `punycode` to a separate package:
 
-    node2rpm -pkg har-validator -ver 5.1.3 -exclude "punycode@^2.x"
+    node2rpm -pkg har-validator -ver 5.1.3 -exclude "punycode:^2.x"
 
 Package as single package:
 
