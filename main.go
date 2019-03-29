@@ -95,16 +95,14 @@ func main() {
 		tree := Tree{}
 		parentTree := ParentTree{}
 		licenses := Licenses{}
-		BuildDependencyTree(pkg, ver, tree, parentTree, Parents{}, ex, licenses)
+		tarballs := Tarballs{}
+		BuildDependencyTree(pkg, ver, tree, parentTree, Parents{}, ex, licenses, tarballs)
 		log.Printf("%s %s tree has been built:\n", pkg, ver)
 		fmt.Println(tree.Inspect(1))
+		tree.ToJson(pkg + ":" + ver)
 		fmt.Println(licenses)
+		tarballs.Dump(pkg + ":" + ver)
 	}
-
-	//	if bundle {
-	//GenerateJson()
-
-	//	}
 
 	//Download()
 

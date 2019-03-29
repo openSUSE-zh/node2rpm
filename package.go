@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/Masterminds/semver"
 	simplejson "github.com/bitly/go-simplejson"
@@ -13,13 +14,16 @@ import (
 	"strings"
 )
 
+// Parent Parent contains the name of the direct parent and the direct parent's counterparts as brothers
 type Parent struct {
 	Name     string
 	Brothers map[string]struct{}
 }
 
+// Parents a group of Parent, its indexing is important. smaller indexing means higher level of parent
 type Parents []Parent
 
+// Contains if a package is provided by one of its direct parents or direct parents' brothers
 func (p Parents) Contains(s string) bool {
 	for i := 0; i < len(p)-1; i++ {
 		if p[i].Name == s {
@@ -32,27 +36,7 @@ func (p Parents) Contains(s string) bool {
 	return false
 }
 
-func (p Parents) Inspect() string {
-	s := p[0].Name
-	for v := range p[0].Brothers {
-		s += "\t" + v
-	}
-	s += "\n"
-
-	idx := 1
-
-	for i := 1; i < len(p)-1; i++ {
-		s += strings.Repeat("\t", idx) + "|\n"
-		s += strings.Repeat("\t", idx) + p[i].Name
-		for v := range p[i].Brothers {
-			s += "\t" + v
-		}
-		s += "\n"
-		idx += 1
-	}
-	return s
-}
-
+// DirectParents the direct parents of a package
 func (p Parents) DirectParents() []string {
 	a := []string{}
 	for _, v := range p {
@@ -89,8 +73,8 @@ func dedupeParents(o, n Parents, t Tree) Parents {
 	return append(p, Parent{low[len(low)-1].Name, brothers})
 }
 
-// ParentTree a place holding all items in the tree now with its parents
-// used to compute unfied parents for the unified package, or one package
+// ParentTree a place holding all nodes in the tree now with its parents
+// used to compute unified parents for the unified package, or one package
 // with a specified version may occur everywhere in the tree. (Dedupe)
 type ParentTree map[string]Parents
 
@@ -168,6 +152,7 @@ func (t Tree) FindChild(idx int, p Parents) Tree {
 	return tree
 }
 
+// FindDependencies find dependencies of a node in the current tree
 func (t Tree) FindDependencies(k string, p Parents) []reflect.Value {
 	fn := DummyFunc{}
 	tv := t.Loop(p, fn).MapIndex(reflect.ValueOf(k)).Elem().FieldByName("Child")
@@ -184,6 +169,7 @@ func (t Tree) FindDependencies(k string, p Parents) []reflect.Value {
 	return keys
 }
 
+// Inspect print the tree
 func (t Tree) Inspect(idx int) string {
 	s := ""
 	for k, v := range t {
@@ -194,13 +180,24 @@ func (t Tree) Inspect(idx int) string {
 	return s
 }
 
-// Node of a dependency tree
-type Node struct {
-	Tarball string
-	Child   Tree
+// ToJson write dependency tree to file
+func (t Tree) ToJson(file string) {
+	b, e := json.MarshalIndent(t, "", "\t")
+	if e != nil {
+		log.Fatalf("Can not convert the dependency tree to json: %s", e)
+	}
+	if !strings.HasSuffix(file, ".json") {
+		file = file + ".json"
+	}
+	ioutil.WriteFile(file, b, 0644)
 }
 
-// Package fetched from registry
+// Node the node structure of the tree
+type Node struct {
+	Child Tree `json:"child,omitempty"`
+}
+
+// Package package informations fetched from registry
 type Package struct {
 	Name     string
 	Versions []*semver.Version
@@ -218,8 +215,29 @@ func (l Licenses) Append(k string) {
 	}
 }
 
+// Tarballs holds download uri of the module and its dependencies
+type Tarballs map[string]struct{}
+
+// Append appends new tarball to Tarballs
+func (tb Tarballs) Append(uri string) {
+	if _, ok := tb[uri]; !ok {
+		tb[uri] = struct{}{}
+	}
+}
+
+func (tb Tarballs) Dump(file string) {
+	s := ""
+	for k := range tb {
+		s += k + "\n"
+	}
+	if !strings.HasSuffix(file, ".txt") {
+		file = file + ".txt"
+	}
+	ioutil.WriteFile(file, []byte(s), 0644)
+}
+
 // BuildDependencyTree build a dependency tree
-func BuildDependencyTree(uri, ver string, tree Tree, pt ParentTree, parents Parents, ex Exclusion, le Licenses) {
+func BuildDependencyTree(uri, ver string, tree Tree, pt ParentTree, parents Parents, ex Exclusion, le Licenses, tb Tarballs) {
 	node := Node{}
 	pkg := RegistryQuery(uri)
 	ahead := true
@@ -235,47 +253,46 @@ func BuildDependencyTree(uri, ver string, tree Tree, pt ParentTree, parents Pare
 	// end
 
 	le.Append(pkg.License)
-	node.Tarball = pkg.Json.Get(ver).Get("dist").Get("tarball").MustString()
+	tb.Append(pkg.Json.Get(ver).Get("dist").Get("tarball").MustString())
 
 	if len(parents) < 1 {
 		// root
 		tree[pkg.Name+":"+ver] = &node
+		pt[pkg.Name+":"+ver] = parents
 	} else {
 		// if parents already has this dependency, don't append
-		//if parents.Contains(pkg.Name + ":" + ver) {
-		//	log.Printf("%s, version %s, has been provided via one of its parent, skiped.", pkg.Name, ver)
-		//	continueDependencies = false
-		//} else {
-		if ptParents, ok := pt[pkg.Name+":"+ver]; ok {
-			log.Printf("%s, version %s, has been in the dependency tree but is not the new one's direct parent nor direct parent's counterpart, npm can not find it. try move the old and the new to a place both can be found by their dependents.", pkg.Name, ver)
-			log.Println("Computing a unified parent")
-			fmt.Println(ptParents.DirectParents())
+		if parents.Contains(pkg.Name + ":" + ver) {
+			fmt.Println(parents)
 			fmt.Println(parents.DirectParents())
-			parents = dedupeParents(ptParents, parents, tree)
-			fmt.Println(parents.DirectParents())
-			if reflect.DeepEqual(parents.DirectParents(), ptParents.DirectParents()) {
-				log.Printf("Computed parent is exactly the same as the old parent, skipped")
-				ahead = false
-			} else {
-				log.Println("Deleting existing old one from tree")
-				// delete all dependencies of the deleted item from ParentTree as well
-				d := tree.FindDependencies(pkg.Name+":"+ver, ptParents)
-				fmt.Println(tree.Inspect(0))
-				tree.Delete(pkg.Name+":"+ver, ptParents)
-				delete(pt, pkg.Name+":"+ver)
-				for _, v := range d {
-					delete(pt, v.String())
-				}
-				tree.Append(pkg.Name+":"+ver, &node, parents)
-				fmt.Println(tree.Inspect(0))
-			}
+			fmt.Println(tree.Inspect(0))
+			log.Printf("%s, version %s, has been provided via one of its parents, skiped.", pkg.Name, ver)
+			ahead = false
 		} else {
-			tree.Append(pkg.Name+":"+ver, &node, parents)
+			if ptParents, ok := pt[pkg.Name+":"+ver]; ok {
+				log.Printf("%s, version %s, has been in the dependency tree but is not one of the new one's direct parents nor direct parents' counterparts, npm can not find it. try merging the old and the new to a place both can be found by their dependents.", pkg.Name, ver)
+				log.Println("Computing an unified parent")
+				parents = dedupeParents(ptParents, parents, tree)
+				if reflect.DeepEqual(parents.DirectParents(), ptParents.DirectParents()) {
+					log.Printf("Computed parent is exactly the same as the old parent, skipped")
+					ahead = false
+				} else {
+					log.Println("Deleting existing old one from tree")
+					// delete all dependencies of the deleted item from ParentTree as well
+					d := tree.FindDependencies(pkg.Name+":"+ver, ptParents)
+					tree.Delete(pkg.Name+":"+ver, ptParents)
+					delete(pt, pkg.Name+":"+ver)
+					for _, v := range d {
+						delete(pt, v.String())
+					}
+					tree.Append(pkg.Name+":"+ver, &node, parents)
+					pt[pkg.Name+":"+ver] = parents
+				}
+			} else {
+				tree.Append(pkg.Name+":"+ver, &node, parents)
+				pt[pkg.Name+":"+ver] = parents
+			}
 		}
-		//}
 	}
-
-	pt[pkg.Name+":"+ver] = parents
 
 	// calculate Child
 	if ahead {
@@ -292,7 +309,7 @@ func BuildDependencyTree(uri, ver string, tree Tree, pt ParentTree, parents Pare
 				copy(np, parents)
 				np = append(np, Parent{k, left})
 				a := strings.Split(k, ":")
-				BuildDependencyTree(a[0], a[1], tree, pt, np, ex, le)
+				BuildDependencyTree(a[0], a[1], tree, pt, np, ex, le, tb)
 			}
 		}
 	}
@@ -302,7 +319,7 @@ func BuildDependencyTree(uri, ver string, tree Tree, pt ParentTree, parents Pare
 func getSemver(versions []*semver.Version, constriant string) *semver.Version {
 	c, e := semver.NewConstraint(constriant)
 	if e != nil {
-		log.Fatalf("Could not initialize a new semver constriant froom %s", constriant)
+		log.Fatalf("Could not initialize a new semver constriant from %s", constriant)
 	}
 
 	for _, v := range versions {
@@ -378,6 +395,11 @@ func formatUri(uri *string) {
 	registry := "https://registry.npmjs.org/"
 	if strings.HasPrefix(*uri, "http") {
 		*uri = filepath.Base(*uri)
+	}
+	if strings.Contains(*uri, "@") {
+		log.Println("scoped package found %v", *uri)
+		*uri = strings.Replace(*uri, "@", "%40", -1)
+		*uri = strings.Replace(*uri, "/", "%2F", -1)
 	}
 	*uri = registry + *uri
 }
