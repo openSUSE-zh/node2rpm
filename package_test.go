@@ -2,6 +2,9 @@ package main
 
 import (
 	simplejson "github.com/bitly/go-simplejson"
+	"io/ioutil"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 )
@@ -22,6 +25,26 @@ func Test_getLicense(t *testing.T) {
 			t.Errorf("getLicense(): %s test failed.", k)
 		}
 	}
+}
+
+func Test_ToService(t *testing.T) {
+	tb := Tarballs{}
+	tb["https://registry.npmjs.org/punycode/-/punycode-2.1.1.tgz"] = struct{}{}
+	wd := "/tmp"
+	tb.ToService(wd)
+	f := filepath.Join(wd, "_service")
+	dat, e := ioutil.ReadFile(f)
+	if e != nil {
+		t.Errorf("Test failed: can not read _service.")
+	}
+
+	result := "<services>\n\t<service name=\"download_url\">\n\t\t<param name=\"protocol\">https</param>\n\t\t<param name=\"host\">registry.npmjs.org</param>\n\t\t<param name=\"path\">/punycode/-/punycode-2.1.1.tgz</param>\n\t</service>\n</services>\n"
+	if result == string(dat) {
+		t.Log("Test passed")
+	} else {
+		t.Errorf("Test failed: expected\n %s, got\n %s.", result, string(dat))
+	}
+	os.Remove(f)
 }
 
 func Test_dedupeParents(t *testing.T) {

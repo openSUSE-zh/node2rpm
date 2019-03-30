@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/Masterminds/semver"
 	"log"
+	"os"
 	"regexp"
 	"strings"
 )
@@ -70,12 +71,18 @@ func parsePackageWithExplicitVersion(s string) (string, string) {
 }
 
 func main() {
-	var pkg, ver, exclude string
+	currentWd, e := os.Getwd()
+	if e != nil {
+		log.Fatal(e)
+	}
+
+	var pkg, ver, exclude, wd string
 	var bundle bool
 	flag.StringVar(&pkg, "pkg", "", "the module needs to package.")
 	flag.StringVar(&ver, "ver", "latest", "the module's version.")
 	flag.BoolVar(&bundle, "bundle", true, "don't bundle dependencies.")
 	flag.StringVar(&exclude, "exclude", "", "the module to be excluded, in 'rimraf:1.0.0,mkdirp:1.0.1' format.")
+	flag.StringVar(&wd, "wd", currentWd, "the osc working directory")
 	flag.Parse()
 
 	if len(pkg) == 0 {
@@ -98,10 +105,10 @@ func main() {
 		tarballs := Tarballs{}
 		BuildDependencyTree(pkg, ver, tree, parentTree, Parents{}, ex, licenses, tarballs)
 		log.Printf("%s %s tree has been built:\n", pkg, ver)
-		fmt.Println(tree.Inspect(1))
+		fmt.Println(tree.Inspect(0))
 		tree.ToJson(pkg + ":" + ver)
 		fmt.Println(licenses)
-		tarballs.Dump(pkg + ":" + ver)
+		tarballs.ToService(wd)
 	}
 
 	//Download()

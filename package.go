@@ -2,12 +2,12 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"github.com/Masterminds/semver"
 	simplejson "github.com/bitly/go-simplejson"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"reflect"
 	"sort"
@@ -225,19 +225,26 @@ func (tb Tarballs) Append(uri string) {
 	}
 }
 
-func (tb Tarballs) Dump(file string) {
-	s := ""
+// ToService convert tarball map to _service
+func (tb Tarballs) ToService(wd string) {
+	s := "<services>\n"
 	for k := range tb {
-		s += k + "\n"
+		s += "\t<service name=\"download_url\">\n"
+		u, e := url.Parse(k)
+		if e != nil {
+			log.Fatalf("Can not parse download_url %s: %s", k, e)
+		}
+		s += "\t\t<param name=\"protocol\">" + u.Scheme + "</param>\n"
+		s += "\t\t<param name=\"host\">" + u.Host + "</param>\n"
+		s += "\t\t<param name=\"path\">" + u.Path + "</param>\n"
+		s += "\t</service>\n"
 	}
-	if !strings.HasSuffix(file, ".txt") {
-		file = file + ".txt"
-	}
-	ioutil.WriteFile(file, []byte(s), 0644)
+	s += "</services>\n"
+	ioutil.WriteFile(filepath.Join(wd, "_service"), []byte(s), 0644)
 }
 
 // BuildDependencyTree build a dependency tree
-func BuildDependencyTree(uri, ver string, tree Tree, pt ParentTree, parents Parents, ex Exclusion, le Licenses, tb Tarballs) {
+func BuildDependencyTree(uri, ver string, tree Tree, pt ParentTree, parents Parents, exclusion Exclusion, licenses Licenses, tarballs Tarballs) {
 	node := Node{}
 	pkg := RegistryQuery(uri)
 	ahead := true
@@ -252,8 +259,8 @@ func BuildDependencyTree(uri, ver string, tree Tree, pt ParentTree, parents Pare
 	}
 	// end
 
-	le.Append(pkg.License)
-	tb.Append(pkg.Json.Get(ver).Get("dist").Get("tarball").MustString())
+	licenses.Append(pkg.License)
+	tarballs.Append(pkg.Json.Get(ver).Get("dist").Get("tarball").MustString())
 
 	if len(parents) < 1 {
 		// root
@@ -262,9 +269,6 @@ func BuildDependencyTree(uri, ver string, tree Tree, pt ParentTree, parents Pare
 	} else {
 		// if parents already has this dependency, don't append
 		if parents.Contains(pkg.Name + ":" + ver) {
-			fmt.Println(parents)
-			fmt.Println(parents.DirectParents())
-			fmt.Println(tree.Inspect(0))
 			log.Printf("%s, version %s, has been provided via one of its parents, skiped.", pkg.Name, ver)
 			ahead = false
 		} else {
@@ -296,7 +300,7 @@ func BuildDependencyTree(uri, ver string, tree Tree, pt ParentTree, parents Pare
 
 	// calculate Child
 	if ahead {
-		dependencies := getDependencies(pkg.Json.Get(ver).Get("dependencies"), ex)
+		dependencies := getDependencies(pkg.Json.Get(ver).Get("dependencies"), exclusion)
 		if len(dependencies) > 0 {
 			for i, k := range dependencies {
 				left := map[string]struct{}{}
@@ -309,7 +313,7 @@ func BuildDependencyTree(uri, ver string, tree Tree, pt ParentTree, parents Pare
 				copy(np, parents)
 				np = append(np, Parent{k, left})
 				a := strings.Split(k, ":")
-				BuildDependencyTree(a[0], a[1], tree, pt, np, ex, le, tb)
+				BuildDependencyTree(a[0], a[1], tree, pt, np, exclusion, licenses, tarballs)
 			}
 		}
 	}
