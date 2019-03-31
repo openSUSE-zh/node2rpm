@@ -89,6 +89,8 @@ func main() {
 		log.Fatal("You must specify a module name to package.")
 	}
 
+	cache := RespCache{}
+
 	if bundle {
 		ex := Exclusion{}
 		if len(exclude) > 0 {
@@ -103,15 +105,15 @@ func main() {
 		parentTree := ParentTree{}
 		licenses := Licenses{}
 		tarballs := Tarballs{}
-		BuildDependencyTree(pkg, ver, tree, parentTree, Parents{}, ex, licenses, tarballs)
+		BuildDependencyTree(pkg, ver, cache, tree, parentTree, Parents{}, ex, licenses, tarballs)
 		log.Printf("%s %s tree has been built:\n", pkg, ver)
 		fmt.Println(tree.Inspect(0))
 		tree.ToJson(pkg + ":" + ver)
 		fmt.Println(licenses)
 		tarballs.ToService(wd)
-	}
+	} else {
 
-	//Download()
+	}
 
 	//FillSpecfile()
 	log.Printf("Congrats! Module %s has been created/updated.", pkg)

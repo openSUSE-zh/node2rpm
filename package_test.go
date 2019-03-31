@@ -5,7 +5,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"reflect"
+	//"reflect"
 	"testing"
 )
 
@@ -47,7 +47,22 @@ func Test_ToService(t *testing.T) {
 	os.Remove(f)
 }
 
-func Test_dedupeParents(t *testing.T) {
+func Test_formatURI(t *testing.T) {
+	testCases := []string{"https://registry.npmjs.org/punycode", "punycode", "@type/node"}
+	registry := "https://registry.npmjs.org/"
+	testResults := []string{"punycode", "punycode", "%40type%2Fnode"}
+	for i, v := range testCases {
+		uri := v
+		formatURI(&uri)
+		if uri == registry+testResults[i] {
+			t.Logf("Test_formatURI passed: %s", v)
+		} else {
+			t.Errorf("Test_formatURI failed: expected %s, got %s", registry+testResults[i], uri)
+		}
+	}
+}
+
+/*func Test_dedupeParents(t *testing.T) {
 	var r Parents
 	brothers := map[string]struct{}{}
 	r = append(r, Parent{"root", brothers})
@@ -67,4 +82,4 @@ func Test_dedupeParents(t *testing.T) {
 	} else {
 		t.Errorf("dedupeParents() failed with result %v, should be %v", testResult, r)
 	}
-}
+}*/

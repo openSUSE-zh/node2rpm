@@ -3,7 +3,7 @@ package main
 import "testing"
 
 func Test_parsePackageWithExplicitVersion(t *testing.T) {
-	s := "rimraf@1.0.0"
+	s := "rimraf:1.0.0"
 	pkg, ver := parsePackageWithExplicitVersion(s)
 	if pkg == "rimraf" {
 		if ver == "1.0.0" {

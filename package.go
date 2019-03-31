@@ -244,9 +244,9 @@ func (tb Tarballs) ToService(wd string) {
 }
 
 // BuildDependencyTree build a dependency tree
-func BuildDependencyTree(uri, ver string, tree Tree, pt ParentTree, parents Parents, exclusion Exclusion, licenses Licenses, tarballs Tarballs) {
+func BuildDependencyTree(uri, ver string, cache RespCache, tree Tree, pt ParentTree, parents Parents, exclusion Exclusion, licenses Licenses, tarballs Tarballs) {
 	node := Node{}
-	pkg := RegistryQuery(uri)
+	pkg := RegistryQuery(uri, cache)
 	ahead := true
 
 	// assign values to initialize the loop
@@ -300,7 +300,7 @@ func BuildDependencyTree(uri, ver string, tree Tree, pt ParentTree, parents Pare
 
 	// calculate Child
 	if ahead {
-		dependencies := getDependencies(pkg.Json.Get(ver).Get("dependencies"), exclusion)
+		dependencies := getDependencies(pkg.Json.Get(ver).Get("dependencies"), cache, exclusion)
 		if len(dependencies) > 0 {
 			for i, k := range dependencies {
 				left := map[string]struct{}{}
@@ -313,7 +313,7 @@ func BuildDependencyTree(uri, ver string, tree Tree, pt ParentTree, parents Pare
 				copy(np, parents)
 				np = append(np, Parent{k, left})
 				a := strings.Split(k, ":")
-				BuildDependencyTree(a[0], a[1], tree, pt, np, exclusion, licenses, tarballs)
+				BuildDependencyTree(a[0], a[1], cache, tree, pt, np, exclusion, licenses, tarballs)
 			}
 		}
 	}
@@ -336,7 +336,7 @@ func getSemver(versions []*semver.Version, constriant string) *semver.Version {
 	return &semver.Version{}
 }
 
-func getDependencies(js *simplejson.Json, ex Exclusion) []string {
+func getDependencies(js *simplejson.Json, cache RespCache, exclusion Exclusion) []string {
 	upstreamDependencies, _ := js.Map()
 	// calculate next parent, we need to append current dependencies as parents
 	// for packages in the next loop here in this loop. because in the next loop,
@@ -358,13 +358,13 @@ func getDependencies(js *simplejson.Json, ex Exclusion) []string {
 	dependencies := []string{}
 
 	for k, constriant := range upstreamDependencies {
-		childPkg := RegistryQuery(k)
+		childPkg := RegistryQuery(k, cache)
 		c, _ := constriant.(string)
 		version := getSemver(childPkg.Versions, c)
 		if len(version.String()) == 0 {
 			log.Fatalf("%s: no suitable version found for %s in %v.", k, constriant, childPkg.Versions)
 		}
-		if ex.Contains(k, version) {
+		if exclusion.Contains(k, version) {
 			log.Printf("%s version %s matched one of the packages known to be excluded, skipped.", k, version.String())
 		} else {
 			dependencies = append(dependencies, k+":"+version.String())
@@ -374,10 +374,13 @@ func getDependencies(js *simplejson.Json, ex Exclusion) []string {
 	return dependencies
 }
 
+// RespCache cache the http response to optimize query time
+type RespCache map[string][]byte
+
 // RegistryQuery query registry to get informations of a Package
-func RegistryQuery(uri string) Package {
-	formatUri(&uri)
-	body := getHttpBody(uri)
+func RegistryQuery(uri string, cache RespCache) Package {
+	formatURI(&uri)
+	body := getHttpBody(uri, cache)
 
 	js, e := simplejson.NewJson(body)
 	if e != nil {
@@ -395,41 +398,47 @@ func RegistryQuery(uri string) Package {
 }
 
 // formatUri standardlize registry uri in place
-func formatUri(uri *string) {
+func formatURI(uri *string) {
 	registry := "https://registry.npmjs.org/"
 	if strings.HasPrefix(*uri, "http") {
 		*uri = filepath.Base(*uri)
 	}
 	if strings.Contains(*uri, "@") {
-		log.Println("scoped package found %v", *uri)
+		log.Printf("scoped package found %v", *uri)
 		*uri = strings.Replace(*uri, "@", "%40", -1)
 		*uri = strings.Replace(*uri, "/", "%2F", -1)
 	}
 	*uri = registry + *uri
 }
 
-func getHttpBody(uri string) []byte {
-	resp, e := http.Get(uri)
-	if e != nil {
-		log.Fatalf("Can't get http response from %s", uri)
-	}
-	defer resp.Body.Close()
-
-	body := []byte{}
-
-	if resp.StatusCode == http.StatusOK {
-		body, e = ioutil.ReadAll(resp.Body)
-		if e != nil {
-			log.Fatalf("Can't read http body %v", resp.Body)
-		}
-		if len(body) == 0 {
-			log.Fatalf("Empty response body. Check whether your specified package exists: %s", uri)
-		}
+func getHttpBody(uri string, cache RespCache) []byte {
+	// use cache first
+	if body, ok := cache[uri]; ok {
+		// all error handling has been done in the first time
+		return body
 	} else {
-		log.Fatalf("statuscode is not 200 but %d", resp.StatusCode)
-	}
+		resp, e := http.Get(uri)
+		if e != nil {
+			log.Fatalf("Can't get http response from %s", uri)
+		}
+		defer resp.Body.Close()
 
-	return body
+		if resp.StatusCode == http.StatusOK {
+			body, e := ioutil.ReadAll(resp.Body)
+			if e != nil {
+				log.Fatalf("Can't read http body %v", resp.Body)
+			}
+			if len(body) == 0 {
+				log.Fatalf("Empty response body. Check whether your specified package exists: %s", uri)
+			}
+			// dump body
+			cache[uri] = body
+			return body
+		} else {
+			log.Fatalf("statuscode of %s request is not 200 but %d", uri, resp.StatusCode)
+		}
+	}
+	return []byte{}
 }
 
 // getLicense parse license for package
