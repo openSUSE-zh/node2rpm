@@ -90,13 +90,14 @@ func main() {
 	}
 
 	cache := RespCache{}
+	spec := Specfile{pkg, false, []byte{}, wd}
 
 	if bundle {
-		ex := Exclusion{}
+		exclusion := Exclusion{}
 		if len(exclude) > 0 {
-			ex = parseExcludeString(exclude)
+			exclusion = parseExcludeString(exclude)
 			log.Println("These packages are set to be excluded:")
-			fmt.Println(ex.Inspect())
+			fmt.Println(exclusion.Inspect())
 		} else {
 			log.Println("No package to exclude, skipped.")
 		}
@@ -105,12 +106,12 @@ func main() {
 		parentTree := ParentTree{}
 		licenses := Licenses{}
 		tarballs := Tarballs{}
-		BuildDependencyTree(pkg, ver, cache, tree, parentTree, Parents{}, ex, licenses, tarballs)
+		BuildDependencyTree(pkg, ver, cache, tree, parentTree, Parents{}, exclusion, licenses, tarballs)
 		log.Printf("%s %s tree has been built:\n", pkg, ver)
 		fmt.Println(tree.Inspect(0))
-		tree.ToJson(pkg + ":" + ver)
-		fmt.Println(licenses)
+		tree.ToJson()
 		tarballs.ToService(wd)
+		spec.Save(licenses.String(), tarballs.String())
 	} else {
 
 	}

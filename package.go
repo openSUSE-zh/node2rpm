@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -181,7 +182,8 @@ func (t Tree) Inspect(idx int) string {
 }
 
 // ToJson write dependency tree to file
-func (t Tree) ToJson(file string) {
+func (t Tree) ToJson() {
+	file := strings.Replace(reflect.ValueOf(t).MapKeys()[0].String(), ":", "-", -1)
 	b, e := json.MarshalIndent(t, "", "\t")
 	if e != nil {
 		log.Fatalf("Can not convert the dependency tree to json: %s", e)
@@ -209,10 +211,37 @@ type Package struct {
 type Licenses map[string]struct{}
 
 // Append appends new license to Licenses
-func (l Licenses) Append(k string) {
-	if _, ok := l[k]; !ok {
-		l[k] = struct{}{}
+func (licenses Licenses) Append(license string) {
+	if _, ok := licenses[license]; !ok {
+		licenses[license] = struct{}{}
 	}
+}
+
+// String convert license map to RPM License string
+func (licenses Licenses) String() string {
+	m := map[string]struct{}{}
+	for license := range licenses {
+		if license == "Unlicense" {
+			continue
+		}
+		if strings.Contains(license, " OR ") {
+			for _, s := range strings.Split(license, " OR ") {
+				if _, ok := m[s]; !ok {
+					m[s] = struct{}{}
+				}
+			}
+		} else {
+			if _, ok := m[license]; !ok {
+				m[license] = struct{}{}
+			}
+		}
+	}
+	keys := reflect.ValueOf(m).MapKeys()
+	strKeys := make([]string, len(keys))
+	for i := 0; i < len(keys); i++ {
+		strKeys[i] = keys[i].String()
+	}
+	return strings.Join(strKeys, " AND ")
 }
 
 // Tarballs holds download uri of the module and its dependencies
@@ -229,7 +258,7 @@ func (tb Tarballs) Append(uri string) {
 func (tb Tarballs) ToService(wd string) {
 	s := "<services>\n"
 	for k := range tb {
-		s += "\t<service name=\"download_url\">\n"
+		s += "\t<service name=\"download_url\" mode=\"localonly\">\n"
 		u, e := url.Parse(k)
 		if e != nil {
 			log.Fatalf("Can not parse download_url %s: %s", k, e)
@@ -241,6 +270,17 @@ func (tb Tarballs) ToService(wd string) {
 	}
 	s += "</services>\n"
 	ioutil.WriteFile(filepath.Join(wd, "_service"), []byte(s), 0644)
+}
+
+// String convert tarball map to RPM Source string
+func (tb Tarballs) String() string {
+	idx := 0
+	s := ""
+	for k := range tb {
+		s += "Source" + strconv.Itoa(idx) + ":\t" + k + "\n"
+		idx += 1
+	}
+	return s
 }
 
 // BuildDependencyTree build a dependency tree
@@ -449,10 +489,14 @@ func getHttpBody(uri string, cache RespCache) []byte {
 // Both 2 and 3 are now deprecated but still in use.
 func getLicense(js *simplejson.Json) string {
 	j := js.Get("license")
+	r := strings.NewReplacer("(", "", ")", "")
 
 	s, e := j.String()
 	if e == nil {
-		return s
+		if !strings.Contains(s, " OR ") {
+			s = strings.Replace(s, " ", "-", -1)
+		}
+		return r.Replace(s)
 	}
 
 	m, e := j.Map()
