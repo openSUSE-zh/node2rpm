@@ -44,11 +44,17 @@ func main() {
 		log.Printf("%s %s tree has been built:\n", pkg, ver)
 		fmt.Println(tree.Inspect(0))
 		tree.ToJson()
-		temp.Tarballs.ToService(wd)
-		spec.Save(temp.Licenses.String(), temp.Tarballs.String())
 	} else {
-
+		pkg1 := RegistryQuery(pkg, temp.ResponseCache)
+		if ver == "latest" {
+			ver = pkg1.Versions[0].String()
+		}
+		temp.Licenses.Append(pkg1.License)
+		temp.Tarballs.Append(pkg1.Json.Get(ver).Get("dist").Get("tarball").MustString())
 	}
+
+	temp.Tarballs.ToService(wd)
+	spec.Save(temp.Licenses.String(), temp.Tarballs.String())
 
 	//FillSpecfile()
 	log.Printf("Congrats! Module %s has been created/updated.", pkg)
