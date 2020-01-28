@@ -2,17 +2,19 @@ package main
 
 import (
 	"encoding/json"
-	"github.com/Masterminds/semver"
-	simplejson "github.com/bitly/go-simplejson"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/Masterminds/semver"
+	simplejson "github.com/bitly/go-simplejson"
 )
 
 // Parent Parent contains the name of the direct parent and the direct parent's counterparts as brothers
@@ -360,8 +362,30 @@ func BuildDependencyTree(uri, ver string, cache RespCache, tree Tree, pt ParentT
 	// Child end
 }
 
+// rewriteConstriantWithExplicitComma node semver uses implicit "AND", eg ">= 2.1.2 < 3"
+// but masterminds semver requires explicit comma as "AND", eg ">= 2.1.2, < 3"
+func rewriteConstriantWithExplicitComma(s string) string {
+	// keep the "or" condition
+	strs := strings.Split(s, "||")
+	// identify how many pairs. ">= 2.1.2" is one pair, the operator
+	// needs to be in front of the version number.
+	re := regexp.MustCompile(`[<=>^~]+(\s+)?\d+(\.[^\s]+)?`)
+	for k, v := range strs {
+		m := re.FindAllStringSubmatch(v, -1)
+		if len(m) > 0 {
+			for i := 0; i < len(m)-1; i++ {
+				v = strings.Replace(v, m[i][0], m[i][0]+",", 1)
+			}
+			strs[k] = v
+		}
+	}
+	// restore the "or" condition
+	s = strings.Join(strs, "||")
+	return s
+}
+
 func getSemver(versions []*semver.Version, constriant string) *semver.Version {
-	c, e := semver.NewConstraint(constriant)
+	c, e := semver.NewConstraint(rewriteConstriantWithExplicitComma(constriant))
 	if e != nil {
 		log.Fatalf("Could not initialize a new semver constriant from %s", constriant)
 	}
