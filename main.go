@@ -26,29 +26,26 @@ func main() {
 		log.Fatal("You must specify a module name to package.")
 	}
 
-	cache := RespCache{}
+	temp := NewTempData()
 	spec := Specfile{pkg, false, []byte{}, wd}
 
 	if bundle {
-		exclusion := Exclusion{}
 		if len(exclude) > 0 {
-			exclusion = parseExcludeString(exclude)
+			temp.Exclusion = parseExcludeString(exclude)
 			log.Println("These packages are set to be excluded:")
-			fmt.Println(exclusion.Inspect())
+			fmt.Println(temp.Exclusion.Inspect())
 		} else {
 			log.Println("No package to exclude, skipped.")
 		}
 
 		tree := Tree{}
 		parentTree := ParentTree{}
-		licenses := Licenses{}
-		tarballs := Tarballs{}
-		BuildDependencyTree(pkg, ver, cache, tree, parentTree, Parents{}, exclusion, licenses, tarballs)
+		BuildDependencyTree(pkg, ver, tree, parentTree, Parents{}, temp)
 		log.Printf("%s %s tree has been built:\n", pkg, ver)
 		fmt.Println(tree.Inspect(0))
 		tree.ToJson()
-		tarballs.ToService(wd)
-		spec.Save(licenses.String(), tarballs.String())
+		temp.Tarballs.ToService(wd)
+		spec.Save(temp.Licenses.String(), temp.Tarballs.String())
 	} else {
 
 	}

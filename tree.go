@@ -12,14 +12,6 @@ import (
 	simplejson "github.com/bitly/go-simplejson"
 )
 
-type tempData struct {
-	exclusion     Exclusion
-	licenses      Licenses
-	tarballs      Tarballs
-	responseCache ResponseCache
-	bower         map[string]string
-}
-
 // Tree Dependency Tree
 type Tree map[string]*Node
 
@@ -141,9 +133,9 @@ type Node struct {
 }
 
 // BuildDependencyTree build a dependency tree
-func BuildDependencyTree(uri, ver string, cache ResponseCache, tree Tree, pt ParentTree, parents Parents, exclusion Exclusion, licenses Licenses, tarballs Tarballs) {
+func BuildDependencyTree(uri, ver string, tree Tree, pt ParentTree, parents Parents, temp TempData) {
 	node := Node{}
-	pkg := RegistryQuery(uri, cache)
+	pkg := RegistryQuery(uri, temp.ResponseCache)
 	ahead := true
 
 	// assign values to initialize the loop
@@ -156,8 +148,8 @@ func BuildDependencyTree(uri, ver string, cache ResponseCache, tree Tree, pt Par
 	}
 	// end
 
-	licenses.Append(pkg.License)
-	tarballs.Append(pkg.Json.Get(ver).Get("dist").Get("tarball").MustString())
+	temp.Licenses.Append(pkg.License)
+	temp.Tarballs.Append(pkg.Json.Get(ver).Get("dist").Get("tarball").MustString())
 
 	if len(parents) < 1 {
 		// root
@@ -197,7 +189,7 @@ func BuildDependencyTree(uri, ver string, cache ResponseCache, tree Tree, pt Par
 
 	// calculate Child
 	if ahead {
-		dependencies := getDependencies(pkg.Json.Get(ver).Get("dependencies"), cache, exclusion)
+		dependencies := getDependencies(pkg.Json.Get(ver).Get("dependencies"), temp.ResponseCache, temp.Exclusion)
 		if len(dependencies) > 0 {
 			for i, k := range dependencies {
 				left := map[string]struct{}{}
@@ -210,7 +202,7 @@ func BuildDependencyTree(uri, ver string, cache ResponseCache, tree Tree, pt Par
 				copy(np, parents)
 				np = append(np, Parent{k, left})
 				a := strings.Split(k, ":")
-				BuildDependencyTree(a[0], a[1], cache, tree, pt, np, exclusion, licenses, tarballs)
+				BuildDependencyTree(a[0], a[1], tree, pt, np, temp)
 			}
 		}
 	}
