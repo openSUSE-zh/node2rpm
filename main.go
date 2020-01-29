@@ -27,7 +27,7 @@ func main() {
 	}
 
 	temp := NewTempData()
-	spec := Specfile{pkg, false, []byte{}, wd}
+	spec := NewSpecfile(pkg, wd)
 
 	if bundle {
 		if len(exclude) > 0 {
@@ -40,7 +40,7 @@ func main() {
 
 		tree := Tree{}
 		parentTree := ParentTree{}
-		BuildDependencyTree(pkg, ver, tree, parentTree, Parents{}, temp)
+		BuildDependencyTree(pkg, &ver, tree, parentTree, Parents{}, temp)
 		log.Printf("%s %s tree has been built:\n", pkg, ver)
 		fmt.Println(tree.Inspect(0))
 		tree.ToJson()
@@ -51,11 +51,12 @@ func main() {
 		}
 		temp.Licenses.Append(pkg1.License)
 		temp.Tarballs.Append(pkg1.Json.Get(ver).Get("dist").Get("tarball").MustString())
+		//Requisites
 	}
 
 	temp.Tarballs.ToService(wd)
-	spec.Save(temp.Licenses.String(), temp.Tarballs.String())
+	spec.Fill(pkg, ver, bundle, temp)
+	spec.Save()
 
-	//FillSpecfile()
 	log.Printf("Congrats! Module %s has been created/updated.", pkg)
 }

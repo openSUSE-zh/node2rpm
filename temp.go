@@ -6,7 +6,7 @@ type TempData struct {
 	Licenses      Licenses
 	Tarballs      Tarballs
 	ResponseCache ResponseCache
-	BowerPackages map[string]string
+	Requisites    string
 }
 
 // NewTempData initialize a new tempData structure
@@ -16,6 +16,6 @@ func NewTempData() TempData {
 		Licenses{},
 		Tarballs{},
 		ResponseCache{},
-		map[string]string{},
+		"",
 	}
 }

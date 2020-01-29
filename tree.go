@@ -133,36 +133,36 @@ type Node struct {
 }
 
 // BuildDependencyTree build a dependency tree
-func BuildDependencyTree(uri, ver string, tree Tree, pt ParentTree, parents Parents, temp TempData) {
+func BuildDependencyTree(uri string, ver *string, tree Tree, pt ParentTree, parents Parents, temp TempData) {
 	node := Node{}
 	pkg := RegistryQuery(uri, temp.ResponseCache)
 	ahead := true
 
 	// assign values to initialize the loop
-	if ver == "latest" {
-		ver = pkg.Versions[0].String()
+	if *ver == "latest" {
+		*ver = pkg.Versions[0].String()
 	}
 
 	if len(parents) == 0 {
-		parents = append(parents, Parent{pkg.Name + ":" + ver, map[string]struct{}{}})
+		parents = append(parents, Parent{pkg.Name + ":" + *ver, map[string]struct{}{}})
 	}
 	// end
 
 	temp.Licenses.Append(pkg.License)
-	temp.Tarballs.Append(pkg.Json.Get(ver).Get("dist").Get("tarball").MustString())
+	temp.Tarballs.Append(pkg.Json.Get(*ver).Get("dist").Get("tarball").MustString())
 
 	if len(parents) < 1 {
 		// root
-		tree[pkg.Name+":"+ver] = &node
-		pt[pkg.Name+":"+ver] = parents
+		tree[pkg.Name+":"+*ver] = &node
+		pt[pkg.Name+":"+*ver] = parents
 	} else {
 		// if parents already has this dependency, don't append
-		if parents.Contains(pkg.Name + ":" + ver) {
-			log.Printf("%s, version %s, has been provided via one of its parents, skiped.", pkg.Name, ver)
+		if parents.Contains(pkg.Name + ":" + *ver) {
+			log.Printf("%s, version %s, has been provided via one of its parents, skiped.", pkg.Name, *ver)
 			ahead = false
 		} else {
-			if ptParents, ok := pt[pkg.Name+":"+ver]; ok {
-				log.Printf("%s, version %s, has been in the dependency tree but is not one of the new one's direct parents nor direct parents' counterparts, npm can not find it. try merging the old and the new to a place both can be found by their dependents.", pkg.Name, ver)
+			if ptParents, ok := pt[pkg.Name+":"+*ver]; ok {
+				log.Printf("%s, version %s, has been in the dependency tree but is not one of the new one's direct parents nor direct parents' counterparts, npm can not find it. try merging the old and the new to a place both can be found by their dependents.", pkg.Name, *ver)
 				log.Println("Computing an unified parent")
 				parents = dedupeParents(ptParents, parents, tree)
 				if reflect.DeepEqual(parents.DirectParents(), ptParents.DirectParents()) {
@@ -171,25 +171,25 @@ func BuildDependencyTree(uri, ver string, tree Tree, pt ParentTree, parents Pare
 				} else {
 					log.Println("Deleting existing old one from tree")
 					// delete all dependencies of the deleted item from ParentTree as well
-					d := tree.FindDependencies(pkg.Name+":"+ver, ptParents)
-					tree.Delete(pkg.Name+":"+ver, ptParents)
-					delete(pt, pkg.Name+":"+ver)
+					d := tree.FindDependencies(pkg.Name+":"+*ver, ptParents)
+					tree.Delete(pkg.Name+":"+*ver, ptParents)
+					delete(pt, pkg.Name+":"+*ver)
 					for _, v := range d {
 						delete(pt, v.String())
 					}
-					tree.Append(pkg.Name+":"+ver, &node, parents)
-					pt[pkg.Name+":"+ver] = parents
+					tree.Append(pkg.Name+":"+*ver, &node, parents)
+					pt[pkg.Name+":"+*ver] = parents
 				}
 			} else {
-				tree.Append(pkg.Name+":"+ver, &node, parents)
-				pt[pkg.Name+":"+ver] = parents
+				tree.Append(pkg.Name+":"+*ver, &node, parents)
+				pt[pkg.Name+":"+*ver] = parents
 			}
 		}
 	}
 
 	// calculate Child
 	if ahead {
-		dependencies := getDependencies(pkg.Json.Get(ver).Get("dependencies"), temp.ResponseCache, temp.Exclusion)
+		dependencies := getDependencies(pkg.Json.Get(*ver).Get("dependencies"), temp.ResponseCache, temp.Exclusion)
 		if len(dependencies) > 0 {
 			for i, k := range dependencies {
 				left := map[string]struct{}{}
@@ -202,7 +202,8 @@ func BuildDependencyTree(uri, ver string, tree Tree, pt ParentTree, parents Pare
 				copy(np, parents)
 				np = append(np, Parent{k, left})
 				a := strings.Split(k, ":")
-				BuildDependencyTree(a[0], a[1], tree, pt, np, temp)
+				s := a[1]
+				BuildDependencyTree(a[0], &s, tree, pt, np, temp)
 			}
 		}
 	}
