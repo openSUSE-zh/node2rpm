@@ -2,11 +2,11 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"regexp"
 	"strings"
 
-	"github.com/Masterminds/semver"
+	//"github.com/Masterminds/semver"
+	semver "github.com/openSUSE-zh/node-semver"
 )
 
 // Exclusion packages to be excluded. Useful for splitting a big bundle to several small bundles.
@@ -24,18 +24,18 @@ func (e Exclusion) Inspect() string {
 }
 
 // Contains if a package with specified version locates in the Exclusion
-func (e Exclusion) Contains(k string, v *semver.Version) bool {
+func (e Exclusion) Contains(k string, v semver.Semver) bool {
 	for m, n := range e {
 		if k != m {
 			continue
 		}
 
-		c, e := semver.NewConstraint(n)
-		if e != nil {
-			log.Fatalf("Could not initialize a new semver constriant froom %s", n)
-		}
+		c := semver.NewRange(n)
+		//if e != nil {
+		//	log.Fatalf("Could not initialize a new semver constriant froom %s", n)
+		//}
 
-		if c.Check(v) {
+		if c.Satisfy(v) {
 			return true
 		}
 	}

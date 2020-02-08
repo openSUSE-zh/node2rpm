@@ -8,14 +8,15 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Masterminds/semver"
+	//"github.com/Masterminds/semver"
 	simplejson "github.com/bitly/go-simplejson"
+	semver "github.com/openSUSE-zh/node-semver"
 )
 
 // Package package informations fetched from registry
 type Package struct {
 	Name     string
-	Versions []*semver.Version
+	Versions semver.Collection
 	License  string
 	Json     *simplejson.Json
 }
@@ -89,15 +90,15 @@ func getHttpBody(uri string, cache ResponseCache) []byte {
 
 // getReverseSorted reverse sort the available versions because newer
 // version tends to be used frequently. save a lot of match work
-func getReverseSorted(versions map[string]interface{}) []*semver.Version {
-	ver := []*semver.Version{}
+func getReverseSorted(versions map[string]interface{}) semver.Collection {
+	ver := semver.Collection{}
 	for v := range versions {
-		sv, e := semver.NewVersion(v)
-		if e != nil {
-			log.Fatalf("Can not build semver from %s.", v)
-		}
+		sv := semver.NewSemver(v)
+		//if e != nil {
+		//	log.Fatalf("Can not build semver from %s.", v)
+		//}
 		ver = append(ver, sv)
 	}
-	sort.Sort(sort.Reverse(semver.Collection(ver)))
+	sort.Sort(sort.Reverse(ver))
 	return ver
 }

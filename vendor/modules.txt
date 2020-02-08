@@ -1,4 +1,4 @@
-# github.com/Masterminds/semver v1.5.0
-github.com/Masterminds/semver
 # github.com/bitly/go-simplejson v0.5.0
 github.com/bitly/go-simplejson
+# github.com/openSUSE-zh/node-semver v0.0.0-20200208133227-0234dba931ac
+github.com/openSUSE-zh/node-semver

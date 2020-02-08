@@ -8,8 +8,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/Masterminds/semver"
+	//"github.com/Masterminds/semver"
 	simplejson "github.com/bitly/go-simplejson"
+	semver "github.com/openSUSE-zh/node-semver"
 )
 
 // Tree Dependency Tree
@@ -232,20 +233,20 @@ func rewriteConstriantWithExplicitComma(s string) string {
 	return s
 }
 
-func getSemver(versions []*semver.Version, constriant string) *semver.Version {
-	c, e := semver.NewConstraint(rewriteConstriantWithExplicitComma(constriant))
-	if e != nil {
-		log.Fatalf("Could not initialize a new semver constriant from %s", constriant)
-	}
+func getSemver(versions semver.Collection, constriant string) semver.Semver {
+	c := semver.NewRange(constriant)
+	//if e != nil {
+	//	log.Fatalf("Could not initialize a new semver constriant from %s", constriant)
+	//}
 
 	for _, v := range versions {
 		// always return the latest matched semver
-		if c.Check(v) {
+		if c.Satisfy(v) {
 			return v
 		}
 	}
 
-	return &semver.Version{}
+	return semver.Semver{}
 }
 
 func getDependencies(js *simplejson.Json, cache ResponseCache, exclusion Exclusion) []string {
