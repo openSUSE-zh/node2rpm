@@ -7,5 +7,5 @@ github.com/kr/pretty v0.2.0/go.mod h1:ipq/a2n7PKx3OHsz4KJII5eveXtPO4qwEXGdVfWzfn
 github.com/kr/pty v1.1.1/go.mod h1:pFQYn66WHrOpPYNljwOMqo10TkYh1fy3cYio2l3bCsQ=
 github.com/kr/text v0.1.0 h1:45sCR5RtlFHMR4UwH9sdQ5TC8v0qDQCHnXt+kaKSTVE=
 github.com/kr/text v0.1.0/go.mod h1:4Jbv+DJW3UT/LiOwJeYQe1efqtUx/iVham/4vfdArNI=
-github.com/openSUSE-zh/node-semver v0.0.0-20200208133227-0234dba931ac h1:APPWyCoPtDysY+GfzdVvr5es0K/rFIKjQNOdTb/VAuY=
-github.com/openSUSE-zh/node-semver v0.0.0-20200208133227-0234dba931ac/go.mod h1:ay23r6K1NqArGWhT31Fg6mqp+2/v29Wyn3UZwLiqvtk=
+github.com/openSUSE-zh/node-semver v0.0.0-20200209091312-556591635086 h1:srAScOpFIAhopuH+Dko7j942+LRP+HJz6OfXxJ69dQQ=
+github.com/openSUSE-zh/node-semver v0.0.0-20200209091312-556591635086/go.mod h1:ay23r6K1NqArGWhT31Fg6mqp+2/v29Wyn3UZwLiqvtk=

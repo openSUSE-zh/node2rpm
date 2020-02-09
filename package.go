@@ -8,7 +8,6 @@ import (
 	"sort"
 	"strings"
 
-	//"github.com/Masterminds/semver"
 	simplejson "github.com/bitly/go-simplejson"
 	semver "github.com/openSUSE-zh/node-semver"
 )
@@ -94,9 +93,6 @@ func getReverseSorted(versions map[string]interface{}) semver.Collection {
 	ver := semver.Collection{}
 	for v := range versions {
 		sv := semver.NewSemver(v)
-		//if e != nil {
-		//	log.Fatalf("Can not build semver from %s.", v)
-		//}
 		ver = append(ver, sv)
 	}
 	sort.Sort(sort.Reverse(ver))

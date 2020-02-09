@@ -189,10 +189,10 @@ func comparePrerelease(v, v1 string) bool {
 	var idx int
 	var long string
 	if l-l1 >= 0 {
-		idx = l
+		idx = l1
 		long = v
 	} else {
-		idx = l1
+		idx = l
 		long = v1
 	}
 

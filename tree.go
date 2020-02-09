@@ -5,47 +5,17 @@ import (
 	"io/ioutil"
 	"log"
 	"reflect"
-	"regexp"
 	"strings"
 
-	//"github.com/Masterminds/semver"
 	simplejson "github.com/bitly/go-simplejson"
 	semver "github.com/openSUSE-zh/node-semver"
 )
 
 // Tree Dependency Tree
-type Tree map[string]*Node
-
-// LoopFunc function to process struct in loop
-type LoopFunc interface {
-	Process(reflect.Value) reflect.Value
-}
-
-// AppendFunc the LoopFunc in Append method
-type AppendFunc struct {
-	Key   string
-	Value *Node
-}
-
-// Process need to intialize the map for Append
-func (fn AppendFunc) Process(tv reflect.Value) reflect.Value {
-	if tv.FieldByName("Child").IsNil() {
-		mapType := reflect.MapOf(reflect.TypeOf(fn.Key), reflect.TypeOf(fn.Value))
-		tv.FieldByName("Child").Set(reflect.MakeMapWithSize(mapType, 0))
-	}
-	return tv
-}
-
-// DummyFunc the "do nothing" LoopFunc
-type DummyFunc struct{}
-
-// Process Dummy
-func (fn DummyFunc) Process(tv reflect.Value) reflect.Value {
-	return tv
-}
+type Tree map[string]*Tree
 
 // Loop loop through the tree to locate the element
-func (t Tree) Loop(p Parents, fn LoopFunc) reflect.Value {
+func (t Tree) Loop(p Parents) reflect.Value {
 	tv := reflect.ValueOf(t)
 	// skip the last element since it's the one to be processed
 	for i := 0; i < len(p)-1; i++ {
@@ -56,25 +26,19 @@ func (t Tree) Loop(p Parents, fn LoopFunc) reflect.Value {
 		if tv.Kind() == reflect.Ptr {
 			tv = tv.Elem()
 		}
-		if tv.Kind() == reflect.Struct {
-			tv = fn.Process(tv)
-			tv = tv.FieldByName("Child")
-		}
 	}
 	return tv
 }
 
 // Append append an element to the tree
-func (t Tree) Append(k string, v *Node, p Parents) {
-	fn := AppendFunc{k, v}
-	tv := t.Loop(p, fn)
+func (t Tree) Append(k string, v *Tree, p Parents) {
+	tv := t.Loop(p)
 	tv.SetMapIndex(reflect.ValueOf(k), reflect.ValueOf(v))
 }
 
 // Delete delete an element from the tree
 func (t Tree) Delete(k string, p Parents) {
-	fn := DummyFunc{}
-	tv := t.Loop(p, fn)
+	tv := t.Loop(p)
 	tv.SetMapIndex(reflect.ValueOf(k), reflect.Value{})
 }
 
@@ -82,15 +46,14 @@ func (t Tree) Delete(k string, p Parents) {
 func (t Tree) FindChild(idx int, p Parents) Tree {
 	tree := t
 	for i := 0; i <= idx; i++ {
-		tree = tree[p[i].Name].Child
+		tree = *tree[p[i].Name]
 	}
 	return tree
 }
 
 // FindDependencies find dependencies of a node in the current tree
 func (t Tree) FindDependencies(k string, p Parents) []reflect.Value {
-	fn := DummyFunc{}
-	tv := t.Loop(p, fn).MapIndex(reflect.ValueOf(k)).Elem().FieldByName("Child")
+	tv := t.Loop(p).MapIndex(reflect.ValueOf(k)).Elem()
 	keys := tv.MapKeys()
 	if len(keys) > 0 {
 		for _, v := range keys {
@@ -110,7 +73,7 @@ func (t Tree) Inspect(idx int) string {
 	for k, v := range t {
 		s += strings.Repeat("\t", idx) + "|\n"
 		s += strings.Repeat("\t", idx) + k + "\n"
-		s += v.Child.Inspect(idx + 1)
+		s += v.Inspect(idx + 1)
 	}
 	return s
 }
@@ -128,14 +91,9 @@ func (t Tree) ToJson() {
 	ioutil.WriteFile(file, b, 0644)
 }
 
-// Node the node structure of the tree
-type Node struct {
-	Child Tree `json:"child,omitempty"`
-}
-
 // BuildDependencyTree build a dependency tree
 func BuildDependencyTree(uri string, ver *string, tree Tree, pt ParentTree, parents Parents, temp TempData) {
-	node := Node{}
+	node := Tree{}
 	pkg := RegistryQuery(uri, temp.ResponseCache)
 	ahead := true
 
@@ -211,33 +169,8 @@ func BuildDependencyTree(uri string, ver *string, tree Tree, pt ParentTree, pare
 	// Child end
 }
 
-// rewriteConstriantWithExplicitComma node semver uses implicit "AND", eg ">= 2.1.2 < 3"
-// but masterminds semver requires explicit comma as "AND", eg ">= 2.1.2, < 3"
-func rewriteConstriantWithExplicitComma(s string) string {
-	// keep the "or" condition
-	strs := strings.Split(s, "||")
-	// identify how many pairs. ">= 2.1.2" is one pair, the operator
-	// needs to be in front of the version number.
-	re := regexp.MustCompile(`[<=>^~]+(\s+)?\d+(\.[^\s]+)?`)
-	for k, v := range strs {
-		m := re.FindAllStringSubmatch(v, -1)
-		if len(m) > 0 {
-			for i := 0; i < len(m)-1; i++ {
-				v = strings.Replace(v, m[i][0], m[i][0]+",", 1)
-			}
-			strs[k] = v
-		}
-	}
-	// restore the "or" condition
-	s = strings.Join(strs, "||")
-	return s
-}
-
 func getSemver(versions semver.Collection, constriant string) semver.Semver {
 	c := semver.NewRange(constriant)
-	//if e != nil {
-	//	log.Fatalf("Could not initialize a new semver constriant from %s", constriant)
-	//}
 
 	for _, v := range versions {
 		// always return the latest matched semver

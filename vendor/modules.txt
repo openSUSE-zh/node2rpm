@@ -1,4 +1,4 @@
 # github.com/bitly/go-simplejson v0.5.0
 github.com/bitly/go-simplejson
-# github.com/openSUSE-zh/node-semver v0.0.0-20200208133227-0234dba931ac
+# github.com/openSUSE-zh/node-semver v0.0.0-20200209091312-556591635086
 github.com/openSUSE-zh/node-semver

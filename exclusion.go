@@ -5,7 +5,6 @@ import (
 	"regexp"
 	"strings"
 
-	//"github.com/Masterminds/semver"
 	semver "github.com/openSUSE-zh/node-semver"
 )
 
@@ -31,9 +30,6 @@ func (e Exclusion) Contains(k string, v semver.Semver) bool {
 		}
 
 		c := semver.NewRange(n)
-		//if e != nil {
-		//	log.Fatalf("Could not initialize a new semver constriant froom %s", n)
-		//}
 
 		if c.Satisfy(v) {
 			return true

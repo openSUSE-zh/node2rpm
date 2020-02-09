@@ -26,16 +26,3 @@ import (
 		t.Errorf("dedupeParents() failed with result %v, should be %v", testResult, r)
 	}
 }*/
-
-func Test_rewriteConstriantWithExplicitComma(t *testing.T) {
-	cases := []string{">= 2.1.2 < 3", "~ 2.1.2", "^2.x || >= 2.1.2 < 3"}
-	answers := []string{">= 2.1.2, < 3", "~ 2.1.2", "^2.x || >= 2.1.2, < 3"}
-	for k, v := range cases {
-		answer := rewriteConstriantWithExplicitComma(v)
-		if answer == answers[k] {
-			t.Logf("Test rewriteConstriantWithExplicitComma succeed, expected %s, got %s", answers[k], answer)
-		} else {
-			t.Errorf("Test rewriteConstriantWithExplicitComman failed, expected %s, got %s", answers[k], answer)
-		}
-	}
-}
