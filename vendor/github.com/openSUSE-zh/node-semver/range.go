@@ -101,12 +101,16 @@ func (c ComparatorSet) Intersect() ComparatorSet {
 		}
 	}
 	// test fixed values in e against the n set
-	if len(n) > 0 && len(e) > 0 {
-		for _, v := range n {
-			if !v.Satisfy(e[0].Version) {
-				log.Fatalf("fixed value %s doesn't fit intersected comparator set %v, can not intersect further", e[0].Version, n)
+	if len(n) > 0 {
+		if len(e) > 0 {
+			for _, v := range n {
+				if !v.Satisfy(e[0].Version) {
+					log.Fatalf("fixed value %s doesn't fit intersected comparator set %v, can not intersect further", e[0].Version, n)
+				}
 			}
+			return e
 		}
+	} else {
 		return e
 	}
 	return n

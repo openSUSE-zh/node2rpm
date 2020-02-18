@@ -6,7 +6,6 @@ type TempData struct {
 	Licenses      Licenses
 	Tarballs      Tarballs
 	ResponseCache ResponseCache
-	Requisites    string
 }
 
 // NewTempData initialize a new tempData structure
@@ -16,6 +15,5 @@ func NewTempData() TempData {
 		Licenses{},
 		Tarballs{},
 		ResponseCache{},
-		"",
 	}
 }

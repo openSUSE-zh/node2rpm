@@ -51,7 +51,6 @@ func main() {
 		}
 		temp.Licenses.Append(pkg1.License)
 		temp.Tarballs.Append(pkg1.Json.Get(ver).Get("dist").Get("tarball").MustString())
-		//Requisites
 	}
 
 	temp.Tarballs.ToService(wd)

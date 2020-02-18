@@ -27,7 +27,6 @@ Url:            <URL>
 <BUILDREQ>
 BuildRequires:  fdupes
 BuildRequires:  nodejs-packaging
-<REQ>
 
 %description
 <DESC>
@@ -39,8 +38,7 @@ BuildRequires:  nodejs-packaging
 %nodejs_build
 
 %install
-%nodejs_mkdir
-%nodejs_copy
+%nodejs_install
 %nodejs_clean
 %nodejs_filelist
 %fdupes %{buildroot}
@@ -51,4 +49,3 @@ BuildRequires:  nodejs-packaging
 %files -f %{_sourcedir}/files.lst
 
 %changelog
-
