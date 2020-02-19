@@ -18,6 +18,18 @@ func (tb Tarballs) Append(uri string) {
 	}
 }
 
+func (tb Tarballs) diff(m map[string]struct{}, wd string) {
+	s := "#!/bin/bash\n"
+	for k := range tb {
+		tgz := filepath.Base(k)
+		if _, ok := m[tgz]; !ok {
+			log.Printf("%s should be removed\n", tgz)
+			s += "osc delete " +tgz+"\n"
+		}
+	}
+	ioutil.WriteFile(filepath.Join(wd, "remove.sh"), []byte(s), 0755)
+}
+
 // ToService convert tarball map to _service
 func (tb Tarballs) ToService(wd string) {
 	s := "<services>\n"
@@ -33,6 +45,11 @@ func (tb Tarballs) ToService(wd string) {
 		s += "\t</service>\n"
 	}
 	s += "</services>\n"
+
+	m := parseService(wd)
+	if m != nil {
+		tb.diff(m, wd)
+	}
 	ioutil.WriteFile(filepath.Join(wd, "_service"), []byte(s), 0644)
 }
 
