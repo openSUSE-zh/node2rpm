@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	simplejson "github.com/bitly/go-simplejson"
+	"github.com/bitly/go-simplejson"
 	semver "github.com/openSUSE-zh/node-semver"
 )
 

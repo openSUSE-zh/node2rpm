@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	simplejson "github.com/bitly/go-simplejson"
+	"github.com/bitly/go-simplejson"
 )
 
 func Test_getLicense(t *testing.T) {

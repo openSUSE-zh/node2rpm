@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"strings"
 
-	simplejson "github.com/bitly/go-simplejson"
+	"github.com/bitly/go-simplejson"
 )
 
 // Licenses holds all unique licenses of the tree
