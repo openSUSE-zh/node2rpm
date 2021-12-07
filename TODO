@@ -1,6 +1,0 @@
-* bower components
-* build flag
-** binding.gyp (node-gyp build)
-** script prepublish & build (webpack build)
-* specfile fill
-* more test coverage
