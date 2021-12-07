@@ -13,13 +13,15 @@ func main() {
 		log.Fatal(e)
 	}
 
-	var pkg, ver, exclude, wd string
+	var defaultSpecTemplatePath = currentWd + "/templates/node2rpm.template"
+	var pkg, ver, exclude, wd, specTemplate string
 	var bundle bool
 	flag.StringVar(&pkg, "pkg", "", "the module needs to package.")
 	flag.StringVar(&ver, "ver", "latest", "the module's version.")
 	flag.BoolVar(&bundle, "bundle", true, "don't bundle dependencies.")
 	flag.StringVar(&exclude, "exclude", "", "the module to be excluded, in 'rimraf:1.0.0,mkdirp:1.0.1' format.")
 	flag.StringVar(&wd, "wd", currentWd, "the osc working directory")
+	flag.StringVar(&specTemplate, "st", defaultSpecTemplatePath, "the spec template file")
 	flag.Parse()
 
 	if len(pkg) == 0 {
@@ -27,7 +29,7 @@ func main() {
 	}
 
 	temp := NewTempData()
-	spec := NewSpecfile(pkg, wd)
+	spec := NewSpecfile(pkg, wd, specTemplate)
 
 	if bundle {
 		if len(exclude) > 0 {

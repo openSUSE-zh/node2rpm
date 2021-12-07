@@ -12,7 +12,7 @@ import (
 	semver "github.com/openSUSE-zh/node-semver"
 )
 
-// Package package informations fetched from registry
+// Package information fetched from registry
 type Package struct {
 	Name     string
 	Versions semver.Collection
@@ -23,7 +23,7 @@ type Package struct {
 // ResponseCache cache the http response to optimize query time
 type ResponseCache map[string][]byte
 
-// RegistryQuery query registry to get informations of a Package
+// RegistryQuery query registry to get information of a Package
 func RegistryQuery(uri string, cache ResponseCache) Package {
 	formatURI(&uri)
 	body := getHttpBody(uri, cache)
@@ -43,7 +43,7 @@ func RegistryQuery(uri string, cache ResponseCache) Package {
 	return pkg
 }
 
-// formatUri standardlize registry uri in place
+// formatUri standardize registry uri in place
 func formatURI(uri *string) {
 	registry := "https://registry.npmjs.org/"
 	if strings.HasPrefix(*uri, "http") {

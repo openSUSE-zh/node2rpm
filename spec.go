@@ -17,13 +17,13 @@ type Specfile struct {
 }
 
 // NewSpecfile initialize a new Specfile structure
-func NewSpecfile(name, wd string) Specfile {
+func NewSpecfile(name, wd, specTemplate string) Specfile {
 	spec := filepath.Join(wd, name+".spec")
 	templated := false
 
 	if _, err := os.Stat(spec); os.IsNotExist(err) {
 		templated = true
-		spec = "node2rpm.template"
+		spec = specTemplate
 	}
 
 	raw, err := ioutil.ReadFile(spec)
