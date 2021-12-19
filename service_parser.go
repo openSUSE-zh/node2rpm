@@ -8,7 +8,7 @@ import (
 )
 
 func parseService(wd string) map[string]struct{} {
-	re := regexp.MustCompile(`path">(.*?)<`)
+	re := regexp.MustCompile(`<param name="path">(.*?)<`)
 	tgz := make(map[string]struct{})
 	service := filepath.Join(wd, "_service")
 	if _, err := os.Stat(service); !os.IsNotExist(err) {
